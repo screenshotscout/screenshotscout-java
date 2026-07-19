@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 /** Indicates a non-successful HTTP response from the Screenshot Scout API. */
+@SuppressWarnings("serial") // Raw and decoded response payloads intentionally retain runtime types.
 public final class ScreenshotScoutApiException extends ScreenshotScoutException {
   private static final long serialVersionUID = 1L;
 

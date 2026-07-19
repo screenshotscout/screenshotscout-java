@@ -6,8 +6,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 /**
- * Reusable CompletableFuture-based async-I/O client. Each capture waits for the final inline
- * Screenshot Scout response; it does not create a background API job or webhook flow.
+ * Reusable, thread-safe CompletableFuture-based async-I/O client. Each capture waits for the final
+ * inline Screenshot Scout response; it does not create a background API job or webhook flow.
  */
 public final class ScreenshotScoutAsyncClient {
   private final ScreenshotScoutClientSupport support;
@@ -17,7 +17,7 @@ public final class ScreenshotScoutAsyncClient {
   }
 
   public static ScreenshotScoutClientBuilder builder() {
-    return ScreenshotScoutClientBuilder.builder();
+    return new ScreenshotScoutClientBuilder();
   }
 
   /** Starts one POST call whose future completes with the final inline capture response. */

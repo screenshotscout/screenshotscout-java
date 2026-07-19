@@ -12,11 +12,7 @@ public final class ScreenshotScoutClientBuilder {
   private String secretKey;
   private HttpClient httpClient;
 
-  public ScreenshotScoutClientBuilder() {}
-
-  public static ScreenshotScoutClientBuilder builder() {
-    return new ScreenshotScoutClientBuilder();
-  }
+  ScreenshotScoutClientBuilder() {}
 
   /** Sets the required Screenshot Scout access key. */
   public ScreenshotScoutClientBuilder accessKey(String value) {

@@ -13,7 +13,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class CaptureSerializationTest {
   @Test
@@ -110,9 +114,9 @@ class CaptureSerializationTest {
     expected.put("response_type", "future-response");
     expected.put("country", "");
     expected.put("proxy", "");
-    expected.put("geolocation_latitude", 0.0);
-    expected.put("geolocation_longitude", 0.0);
-    expected.put("geolocation_accuracy", 0.0);
+    expected.put("geolocation_latitude", 0);
+    expected.put("geolocation_longitude", 0);
+    expected.put("geolocation_accuracy", 0);
     expected.put("cookies", List.of("session=a", "session=a", ""));
     expected.put("headers", List.of("X-Test:one", "X-Test:one", ""));
     expected.put("timeout", 0);
@@ -122,7 +126,7 @@ class CaptureSerializationTest {
     expected.put("device", "");
     expected.put("device_viewport_width", 0);
     expected.put("device_viewport_height", 0);
-    expected.put("device_scale_factor", 0.0);
+    expected.put("device_scale_factor", 0);
     expected.put("device_is_mobile", false);
     expected.put("device_has_touch", false);
     expected.put("device_user_agent", "");
@@ -164,7 +168,7 @@ class CaptureSerializationTest {
     expected.put("pdf_margin_right", "");
     expected.put("pdf_margin_bottom", "");
     expected.put("pdf_margin_left", "");
-    expected.put("pdf_scale", 0.0);
+    expected.put("pdf_scale", 0);
     expected.put("cache", false);
     expected.put("cache_ttl", 0);
     expected.put("cache_key", "");
@@ -174,6 +178,36 @@ class CaptureSerializationTest {
     expected.put("storage_region", "");
     expected.put("storage_object_key", "");
     assertEquals(expected, body);
+  }
+
+  @ParameterizedTest
+  @MethodSource("ecmaScriptNumberCases")
+  void doubleOptionsUseEcmaScriptFormattingInQueriesAndJson(double value, String expected)
+      throws Exception {
+    SerializedCaptureOptions serialized =
+        CaptureSerializer.serialize(
+            "https://example.com", CaptureOptions.builder().pdfScale(value).build());
+
+    assertEquals(new WirePair("pdf_scale", expected), serialized.pairs().get(1));
+    assertEquals(
+        "{\"url\":\"https://example.com\",\"pdf_scale\":" + expected + "}",
+        new String(CaptureSerializer.serializeJsonBody(serialized.body()), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void signedPostWithAWholeDoubleMatchesApiCanonicalization() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClient client = client(transport, "ak_test", "sk_test");
+    String expectedSignature = "9455e37a8893f7a2e43d5bdf8203986139f66f768bd7ccebb8c8df80604a9683";
+
+    client.capture("https://example.com", CaptureOptions.builder().pdfScale(2.0).build());
+
+    assertEquals(
+        "{\"url\":\"https://example.com\",\"pdf_scale\":2,\"signature\":\""
+            + expectedSignature
+            + "\"}",
+        new String(
+            TestHttpClient.requestBody(transport.requests().get(0)), StandardCharsets.UTF_8));
   }
 
   @Test
@@ -336,6 +370,23 @@ class CaptureSerializationTest {
     assertArrayEquals(
         "future".getBytes(StandardCharsets.UTF_8),
         CaptureFormat.fromString("future").value().getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static Stream<Arguments> ecmaScriptNumberCases() {
+    return Stream.of(
+        Arguments.of(0.0, "0"),
+        Arguments.of(-0.0, "0"),
+        Arguments.of(2.0, "2"),
+        Arguments.of(1.25, "1.25"),
+        Arguments.of(0.000001, "0.000001"),
+        Arguments.of(0.0000001, "1e-7"),
+        Arguments.of(10_000_000.0, "10000000"),
+        Arguments.of(100_000_000_000_000_000_000.0, "100000000000000000000"),
+        Arguments.of(1e21, "1e+21"),
+        Arguments.of(-1.2e-7, "-1.2e-7"),
+        Arguments.of(1_000_000_000_000_000_128.0, "1000000000000000100"),
+        Arguments.of(Double.MIN_VALUE, "5e-324"),
+        Arguments.of(Double.MAX_VALUE, "1.7976931348623157e+308"));
   }
 
   private static ScreenshotScoutClient client(

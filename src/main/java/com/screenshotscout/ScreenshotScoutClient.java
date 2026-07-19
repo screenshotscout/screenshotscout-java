@@ -3,7 +3,7 @@ package com.screenshotscout;
 import java.io.IOException;
 import java.net.http.HttpResponse;
 
-/** Reusable blocking Screenshot Scout client. */
+/** Reusable, thread-safe blocking Screenshot Scout client. */
 public final class ScreenshotScoutClient {
   private final ScreenshotScoutClientSupport support;
 
@@ -12,20 +12,35 @@ public final class ScreenshotScoutClient {
   }
 
   public static ScreenshotScoutClientBuilder builder() {
-    return ScreenshotScoutClientBuilder.builder();
+    return new ScreenshotScoutClientBuilder();
   }
 
-  /** Sends one POST request and waits for the final inline capture response. */
+  /**
+   * Sends one POST request and waits for the final inline capture response.
+   *
+   * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
+   *     preserved
+   */
   public CaptureResponse capture(String url) throws InterruptedException {
     return capture(url, null, CaptureHttpMethod.POST);
   }
 
-  /** Sends one POST request and waits for the final inline capture response. */
+  /**
+   * Sends one POST request and waits for the final inline capture response.
+   *
+   * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
+   *     preserved
+   */
   public CaptureResponse capture(String url, CaptureOptions options) throws InterruptedException {
     return capture(url, options, CaptureHttpMethod.POST);
   }
 
-  /** Sends one GET or POST request and waits for the final inline capture response. */
+  /**
+   * Sends one GET or POST request and waits for the final inline capture response.
+   *
+   * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
+   *     preserved
+   */
   public CaptureResponse capture(String url, CaptureOptions options, CaptureHttpMethod method)
       throws InterruptedException {
     PreparedCapture prepared = support.prepare(url, options, method);

@@ -19,21 +19,20 @@ class ClientBehaviorTest {
   @Test
   void builderValidatesCredentialsAndCreatesBothClientModels() {
     assertThrows(
-        ScreenshotScoutConfigurationException.class,
-        () -> ScreenshotScoutClientBuilder.builder().build());
+        ScreenshotScoutConfigurationException.class, () -> ScreenshotScoutClient.builder().build());
     assertThrows(
         ScreenshotScoutConfigurationException.class,
-        () -> ScreenshotScoutClientBuilder.builder().accessKey("   ").build());
+        () -> ScreenshotScoutClient.builder().accessKey("   ").build());
     assertThrows(
         ScreenshotScoutConfigurationException.class,
-        () -> ScreenshotScoutClientBuilder.builder().accessKey("key with spaces").build());
+        () -> ScreenshotScoutClient.builder().accessKey("key with spaces").build());
     assertThrows(
         ScreenshotScoutConfigurationException.class,
-        () -> ScreenshotScoutClientBuilder.builder().accessKey("key").secretKey("").build());
+        () -> ScreenshotScoutClient.builder().accessKey("key").secretKey("").build());
 
     TestHttpClient transport = new TestHttpClient();
     ScreenshotScoutClientBuilder builder =
-        new ScreenshotScoutClientBuilder().accessKey("ak_test+/=").httpClient(transport);
+        ScreenshotScoutClient.builder().accessKey("ak_test+/=").httpClient(transport);
     assertNotNull(builder.build());
     assertNotNull(builder.buildAsync());
   }

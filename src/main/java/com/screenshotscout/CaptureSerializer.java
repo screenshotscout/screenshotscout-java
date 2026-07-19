@@ -153,8 +153,14 @@ final class CaptureSerializer {
             publicName(wireName));
       }
 
-      pairs.add(new WirePair(wireName, String.valueOf(wireValue)));
-      body.put(wireName, wireValue);
+      if (wireValue instanceof Double doubleValue) {
+        String formatted = EcmaScriptNumberFormatter.format(doubleValue);
+        pairs.add(new WirePair(wireName, formatted));
+        body.put(wireName, new WireNumber(formatted));
+      } else {
+        pairs.add(new WirePair(wireName, String.valueOf(wireValue)));
+        body.put(wireName, wireValue);
+      }
     }
 
     private void addRepeated(String publicName, String wireName, List<?> values) {

@@ -52,6 +52,8 @@ final class JsonCodec {
       generator.writeNull();
     } else if (value instanceof String stringValue) {
       generator.writeString(stringValue);
+    } else if (value instanceof WireNumber wireNumber) {
+      generator.writeNumber(wireNumber.value());
     } else if (value instanceof Integer integerValue) {
       generator.writeNumber(integerValue);
     } else if (value instanceof Long longValue) {
