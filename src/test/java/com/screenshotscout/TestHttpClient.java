@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import javax.net.ssl.SSLContext;
@@ -30,6 +31,8 @@ final class TestHttpClient extends HttpClient {
   private ResponseSpec response =
       new ResponseSpec(200, Map.of("content-type", List.of("image/png")), new byte[] {1});
   private IOException failure;
+  private CompletableFuture<HttpResponse<byte[]>> pendingBlockingResponse;
+  private CompletableFuture<HttpRequest> pendingBlockingRequest;
   private CompletableFuture<HttpResponse<byte[]>> pendingAsyncResponse;
   private int blockingCalls;
   private int asyncCalls;
@@ -37,12 +40,29 @@ final class TestHttpClient extends HttpClient {
   void respond(int status, Map<String, List<String>> headers, byte[] body) {
     response = new ResponseSpec(status, headers, body.clone());
     failure = null;
+    pendingBlockingResponse = null;
+    pendingBlockingRequest = null;
     pendingAsyncResponse = null;
   }
 
   void fail(IOException value) {
     failure = value;
+    pendingBlockingResponse = null;
+    pendingBlockingRequest = null;
     pendingAsyncResponse = null;
+  }
+
+  CompletableFuture<HttpResponse<byte[]>> usePendingBlockingResponse() {
+    pendingBlockingResponse = new CompletableFuture<>();
+    pendingBlockingRequest = new CompletableFuture<>();
+    return pendingBlockingResponse;
+  }
+
+  CompletableFuture<HttpRequest> pendingBlockingRequest() {
+    if (pendingBlockingRequest == null) {
+      throw new IllegalStateException("A pending blocking response has not been configured.");
+    }
+    return pendingBlockingRequest;
   }
 
   CompletableFuture<HttpResponse<byte[]>> usePendingAsyncResponse() {
@@ -69,11 +89,27 @@ final class TestHttpClient extends HttpClient {
   @Override
   @SuppressWarnings("unchecked")
   public <T> HttpResponse<T> send(
-      HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) throws IOException {
+      HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
+      throws IOException, InterruptedException {
     blockingCalls++;
     requests.add(request);
     if (failure != null) {
       throw failure;
+    }
+    if (pendingBlockingResponse != null) {
+      pendingBlockingRequest.complete(request);
+      try {
+        return (HttpResponse<T>) pendingBlockingResponse.get();
+      } catch (ExecutionException exception) {
+        Throwable cause = exception.getCause();
+        if (cause instanceof IOException ioException) {
+          throw ioException;
+        }
+        if (cause instanceof RuntimeException runtimeException) {
+          throw runtimeException;
+        }
+        throw new IOException("The pending test response failed.", cause);
+      }
     }
     return (HttpResponse<T>) response.toResponse(request);
   }

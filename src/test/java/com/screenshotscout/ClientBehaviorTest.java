@@ -9,10 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class ClientBehaviorTest {
@@ -74,6 +79,28 @@ class ClientBehaviorTest {
       assertEquals(0, transport.blockingCalls());
     } finally {
       Thread.interrupted();
+    }
+  }
+
+  @Test
+  void blockingClientWaitsForTheFinalInlineResponse() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    CompletableFuture<HttpResponse<byte[]>> pending = transport.usePendingBlockingResponse();
+    ScreenshotScoutClient client = client(transport);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<CaptureResponse> capture =
+          executor.submit(() -> client.capture("https://example.com"));
+      HttpRequest request = transport.pendingBlockingRequest().get(5, TimeUnit.SECONDS);
+
+      assertFalse(capture.isDone());
+      assertEquals(1, transport.blockingCalls());
+      pending.complete(transport.responseFor(request));
+      assertInstanceOf(BinaryCaptureResponse.class, capture.get(5, TimeUnit.SECONDS));
+      assertTrue(capture.isDone());
+    } finally {
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
     }
   }
 
