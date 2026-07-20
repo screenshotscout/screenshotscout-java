@@ -17,7 +17,7 @@ Add the SDK to your project:
 <dependency>
   <groupId>com.screenshotscout</groupId>
   <artifactId>screenshotscout</artifactId>
-  <version>0.1.0-rc.1</version>
+  <version>0.1.0</version>
 </dependency>
 ```
 
