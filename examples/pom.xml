@@ -6,7 +6,7 @@
 
   <groupId>com.screenshotscout.examples</groupId>
   <artifactId>screenshotscout-examples</artifactId>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
   <packaging>jar</packaging>
 
   <properties>
@@ -18,7 +18,7 @@
     <dependency>
       <groupId>com.screenshotscout</groupId>
       <artifactId>screenshotscout</artifactId>
-      <version>0.1.0</version>
+      <version>0.3.0</version>
     </dependency>
   </dependencies>
 
