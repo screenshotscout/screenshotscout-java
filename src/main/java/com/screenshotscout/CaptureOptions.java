@@ -70,6 +70,7 @@ public final class CaptureOptions {
   private final String pdfMarginBottom;
   private final String pdfMarginLeft;
   private final Double pdfScale;
+  private final String pdfPageRanges;
   private final Boolean cache;
   private final Integer cacheTtl;
   private final String cacheKey;
@@ -139,6 +140,7 @@ public final class CaptureOptions {
     pdfMarginBottom = builder.pdfMarginBottom;
     pdfMarginLeft = builder.pdfMarginLeft;
     pdfScale = builder.pdfScale;
+    pdfPageRanges = builder.pdfPageRanges;
     cache = builder.cache;
     cacheTtl = builder.cacheTtl;
     cacheKey = builder.cacheKey;
@@ -389,6 +391,10 @@ public final class CaptureOptions {
     return pdfScale;
   }
 
+  public String pdfPageRanges() {
+    return pdfPageRanges;
+  }
+
   public Boolean cache() {
     return cache;
   }
@@ -486,6 +492,7 @@ public final class CaptureOptions {
     private String pdfMarginBottom;
     private String pdfMarginLeft;
     private Double pdfScale;
+    private String pdfPageRanges;
     private Boolean cache;
     private Integer cacheTtl;
     private String cacheKey;
@@ -789,6 +796,11 @@ public final class CaptureOptions {
 
     public Builder pdfScale(Double value) {
       pdfScale = value;
+      return this;
+    }
+
+    public Builder pdfPageRanges(String value) {
+      pdfPageRanges = value;
       return this;
     }
 

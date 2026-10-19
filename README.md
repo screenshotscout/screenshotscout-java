@@ -178,7 +178,7 @@ The target URL is the first `capture` or `buildCaptureUrl` argument. Configure t
 - Image output: `imageWidth`, `imageHeight`, `imageMode`, `imageAnchor`,
   `imageAllowUpscale`, `imageBackground`, `imageQuality`
 - PDF: `pdfPaperFormat`, `pdfLandscape`, `pdfPrintBackground`, `pdfMargin`, `pdfMarginTop`,
-  `pdfMarginRight`, `pdfMarginBottom`, `pdfMarginLeft`, `pdfScale`
+  `pdfMarginRight`, `pdfMarginBottom`, `pdfMarginLeft`, `pdfScale`, `pdfPageRanges`
 - Caching: `cache`, `cacheTtl`, `cacheKey`
 - Storage: `storageMode`, `storageEndpoint`, `storageBucket`, `storageRegion`,
   `storageObjectKey`

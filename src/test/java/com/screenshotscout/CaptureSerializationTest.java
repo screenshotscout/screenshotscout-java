@@ -85,6 +85,7 @@ class CaptureSerializationTest {
             .pdfMarginBottom("")
             .pdfMarginLeft("")
             .pdfScale(0.0)
+            .pdfPageRanges("")
             .cache(false)
             .cacheTtl(0)
             .cacheKey("")
@@ -169,6 +170,7 @@ class CaptureSerializationTest {
     expected.put("pdf_margin_bottom", "");
     expected.put("pdf_margin_left", "");
     expected.put("pdf_scale", 0);
+    expected.put("pdf_page_ranges", "");
     expected.put("cache", false);
     expected.put("cache_ttl", 0);
     expected.put("cache_key", "");

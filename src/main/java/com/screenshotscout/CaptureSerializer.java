@@ -82,6 +82,7 @@ final class CaptureSerializer {
     serialized.add("pdf_margin_bottom", options.pdfMarginBottom());
     serialized.add("pdf_margin_left", options.pdfMarginLeft());
     serialized.add("pdf_scale", options.pdfScale());
+    serialized.add("pdf_page_ranges", options.pdfPageRanges());
     serialized.add("cache", options.cache());
     serialized.add("cache_ttl", options.cacheTtl());
     serialized.add("cache_key", options.cacheKey());

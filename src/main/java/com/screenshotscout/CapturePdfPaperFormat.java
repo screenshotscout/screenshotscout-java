@@ -4,7 +4,8 @@ package com.screenshotscout;
 public final class CapturePdfPaperFormat extends CaptureStringValue {
   public static final CapturePdfPaperFormat A3 = new CapturePdfPaperFormat("a3");
   public static final CapturePdfPaperFormat A4 = new CapturePdfPaperFormat("a4");
-  public static final CapturePdfPaperFormat CONTENT = new CapturePdfPaperFormat("content");
+  public static final CapturePdfPaperFormat A5 = new CapturePdfPaperFormat("a5");
+  public static final CapturePdfPaperFormat A6 = new CapturePdfPaperFormat("a6");
   public static final CapturePdfPaperFormat LEGAL = new CapturePdfPaperFormat("legal");
   public static final CapturePdfPaperFormat LETTER = new CapturePdfPaperFormat("letter");
   public static final CapturePdfPaperFormat TABLOID = new CapturePdfPaperFormat("tabloid");
