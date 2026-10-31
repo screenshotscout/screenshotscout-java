@@ -1,21 +1,27 @@
 package com.screenshotscout;
 
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 final class CaptureSerializer {
+  private static final HexFormat UPPERCASE_HEX = HexFormat.of().withUpperCase();
+
   private CaptureSerializer() {}
 
   static SerializedCaptureOptions serialize(String targetUrl, CaptureOptions options) {
     if (targetUrl == null) {
       throw new ScreenshotScoutSerializationException(
           "The capture target URL must be a string.", "url");
+    }
+    if (!isWellFormed(targetUrl)) {
+      throw new ScreenshotScoutSerializationException(
+          "The capture target URL must contain valid Unicode text.", "url");
     }
 
     SerializationBuilder serialized = new SerializationBuilder(targetUrl);
@@ -109,12 +115,35 @@ final class CaptureSerializer {
       if (!query.isEmpty()) {
         query.append('&');
       }
-      query
-          .append(URLEncoder.encode(pair.name(), StandardCharsets.UTF_8))
-          .append('=')
-          .append(URLEncoder.encode(pair.value(), StandardCharsets.UTF_8));
+      query.append(encodeRfc3986(pair.name())).append('=').append(encodeRfc3986(pair.value()));
     }
     return query.toString();
+  }
+
+  // RFC 3986 percent-encoding for both the signed text and the URLs: every UTF-8 byte except
+  // A-Z a-z 0-9 - . _ ~ becomes %XX with uppercase hex, so a space is %20.
+  private static String encodeRfc3986(String value) {
+    byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+    StringBuilder encoded = new StringBuilder(bytes.length);
+    for (byte octet : bytes) {
+      if ((octet >= 'A' && octet <= 'Z')
+          || (octet >= 'a' && octet <= 'z')
+          || (octet >= '0' && octet <= '9')
+          || octet == '-'
+          || octet == '.'
+          || octet == '_'
+          || octet == '~') {
+        encoded.append((char) octet);
+      } else {
+        UPPERCASE_HEX.toHexDigits(encoded.append('%'), octet);
+      }
+    }
+    return encoded.toString();
+  }
+
+  private static boolean isWellFormed(String value) {
+    // String.codePoints() returns an unpaired surrogate as a code point of its own.
+    return value.codePoints().noneMatch(point -> Character.getType(point) == Character.SURROGATE);
   }
 
   static byte[] serializeJsonBody(Map<String, Object> body) {
@@ -153,6 +182,11 @@ final class CaptureSerializer {
             "The capture option \"" + wireName + "\" must be a string, finite number, or boolean.",
             publicName(wireName));
       }
+      if (wireValue instanceof String stringValue && !isWellFormed(stringValue)) {
+        throw new ScreenshotScoutSerializationException(
+            "The capture option \"" + publicName(wireName) + "\" must contain valid Unicode text.",
+            publicName(wireName));
+      }
 
       if (wireValue instanceof Double doubleValue) {
         String formatted = EcmaScriptNumberFormatter.format(doubleValue);
@@ -174,6 +208,11 @@ final class CaptureSerializer {
         if (!(value instanceof String stringValue)) {
           throw new ScreenshotScoutSerializationException(
               "The capture option \"" + publicName + "\" must contain only strings.", publicName);
+        }
+        if (!isWellFormed(stringValue)) {
+          throw new ScreenshotScoutSerializationException(
+              "The capture option \"" + publicName + "\" must contain only valid Unicode strings.",
+              publicName);
         }
         copied.add(stringValue);
         pairs.add(new WirePair(wireName, stringValue));

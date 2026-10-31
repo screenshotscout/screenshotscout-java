@@ -17,7 +17,7 @@ Add the SDK to your project:
 <dependency>
   <groupId>com.screenshotscout</groupId>
   <artifactId>screenshotscout</artifactId>
-  <version>0.3.0</version>
+  <version>0.4.0</version>
 </dependency>
 ```
 
@@ -150,10 +150,16 @@ ScreenshotScoutClient signedClient =
         .accessKey("YOUR_ACCESS_KEY")
         .secretKey("YOUR_SECRET_KEY")
         .build();
+
+signedClient.capture(
+    "https://example.com",
+    CaptureOptions.builder().fullPage(true).build(),
+    CaptureHttpMethod.GET);
 ```
 
-When a secret key is configured, the client automatically signs GET and POST requests and generated
-capture URLs. The secret key stays in your application and is never transmitted. See the
+When a secret key is configured, the client automatically signs generated capture URLs and GET
+requests. POST requests can't be signed, so capture with `CaptureHttpMethod.GET`, as shown above.
+The secret key stays in your application and is never transmitted. See the
 [signed requests guide](https://screenshotscout.com/docs/signed-requests).
 
 ## Capture options

@@ -4,7 +4,6 @@ import com.screenshotscout.BinaryCaptureResponse;
 import com.screenshotscout.CaptureOptions;
 import com.screenshotscout.CaptureResponse;
 import com.screenshotscout.ScreenshotScoutClient;
-import com.screenshotscout.ScreenshotScoutClientBuilder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -16,13 +15,7 @@ public final class BinaryCaptureExample {
     if (accessKey == null || accessKey.isBlank()) {
       throw new IllegalStateException("Set SCREENSHOTSCOUT_ACCESS_KEY first.");
     }
-    ScreenshotScoutClientBuilder builder =
-        ScreenshotScoutClient.builder().accessKey(accessKey);
-    String secretKey = System.getenv("SCREENSHOTSCOUT_SECRET_KEY");
-    if (secretKey != null && !secretKey.isBlank()) {
-      builder.secretKey(secretKey);
-    }
-    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutClient client = ScreenshotScoutClient.builder().accessKey(accessKey).build();
 
     CaptureResponse response =
         client.capture(

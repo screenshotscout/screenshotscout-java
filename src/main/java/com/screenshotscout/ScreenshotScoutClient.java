@@ -18,6 +18,8 @@ public final class ScreenshotScoutClient {
   /**
    * Sends one POST request and waits for the final inline capture response.
    *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
+   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
    * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
    *     preserved
    */
@@ -28,6 +30,8 @@ public final class ScreenshotScoutClient {
   /**
    * Sends one POST request and waits for the final inline capture response.
    *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
+   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
    * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
    *     preserved
    */
@@ -36,8 +40,11 @@ public final class ScreenshotScoutClient {
   }
 
   /**
-   * Sends one GET or POST request and waits for the final inline capture response.
+   * Sends one GET or POST request and waits for the final inline capture response. A client with a
+   * secret key signs GET requests and refuses POST requests, which can't be signed.
    *
+   * @throws ScreenshotScoutConfigurationException if {@code method} is POST and this client has a
+   *     secret key
    * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
    *     preserved
    */

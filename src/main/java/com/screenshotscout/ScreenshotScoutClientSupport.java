@@ -41,9 +41,14 @@ final class ScreenshotScoutClientSupport {
       throw new ScreenshotScoutSerializationException(
           "The capture method must be CaptureHttpMethod.GET or CaptureHttpMethod.POST.", "method");
     }
-
     SerializedCaptureOptions serialized = CaptureSerializer.serialize(targetUrl, options);
     ExpectedResponseKind expectedKind = expectedResponseKind(options);
+    if (secretKey != null && method == CaptureHttpMethod.POST) {
+      throw new ScreenshotScoutConfigurationException(
+          "POST requests can't be signed. This client has a secret key: send this capture with"
+              + " method GET, or use a client without a secret key and an API key that doesn't"
+              + " require signed requests.");
+    }
     String signature = createSignature(serialized.pairs());
     HttpRequest request = createRequest(serialized, method, signature);
     return new PreparedCapture(request, expectedKind);
@@ -85,12 +90,9 @@ final class ScreenshotScoutClientSupport {
         builder = HttpRequest.newBuilder(requestUri).GET();
       } else {
         requestUri = CAPTURE_ENDPOINT;
-        Map<String, Object> body = new LinkedHashMap<>(serialized.body());
-        if (signature != null) {
-          body.put("signature", signature);
-        }
         bodyPublisher =
-            HttpRequest.BodyPublishers.ofByteArray(CaptureSerializer.serializeJsonBody(body));
+            HttpRequest.BodyPublishers.ofByteArray(
+                CaptureSerializer.serializeJsonBody(serialized.body()));
         builder =
             HttpRequest.newBuilder(requestUri)
                 .header("Content-Type", "application/json")

@@ -4,7 +4,6 @@ import com.screenshotscout.CaptureOptions;
 import com.screenshotscout.CaptureResponseType;
 import com.screenshotscout.JsonCaptureResponse;
 import com.screenshotscout.ScreenshotScoutClient;
-import com.screenshotscout.ScreenshotScoutClientBuilder;
 
 public final class JsonCaptureExample {
   private JsonCaptureExample() {}
@@ -14,13 +13,7 @@ public final class JsonCaptureExample {
     if (accessKey == null || accessKey.isBlank()) {
       throw new IllegalStateException("Set SCREENSHOTSCOUT_ACCESS_KEY first.");
     }
-    ScreenshotScoutClientBuilder builder =
-        ScreenshotScoutClient.builder().accessKey(accessKey);
-    String secretKey = System.getenv("SCREENSHOTSCOUT_SECRET_KEY");
-    if (secretKey != null && !secretKey.isBlank()) {
-      builder.secretKey(secretKey);
-    }
-    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutClient client = ScreenshotScoutClient.builder().accessKey(accessKey).build();
 
     CaptureOptions options =
         CaptureOptions.builder()

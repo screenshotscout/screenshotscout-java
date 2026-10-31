@@ -20,17 +20,33 @@ public final class ScreenshotScoutAsyncClient {
     return new ScreenshotScoutClientBuilder();
   }
 
-  /** Starts one POST call whose future completes with the final inline capture response. */
+  /**
+   * Starts one POST call whose future completes with the final inline capture response.
+   *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
+   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
+   */
   public CompletableFuture<CaptureResponse> capture(String url) {
     return capture(url, null, CaptureHttpMethod.POST);
   }
 
-  /** Starts one POST call whose future completes with the final inline capture response. */
+  /**
+   * Starts one POST call whose future completes with the final inline capture response.
+   *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
+   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
+   */
   public CompletableFuture<CaptureResponse> capture(String url, CaptureOptions options) {
     return capture(url, options, CaptureHttpMethod.POST);
   }
 
-  /** Starts one GET or POST call whose future completes with the final inline response. */
+  /**
+   * Starts one GET or POST call whose future completes with the final inline response. A client
+   * with a secret key signs GET requests and refuses POST requests, which can't be signed.
+   *
+   * @throws ScreenshotScoutConfigurationException if {@code method} is POST and this client has a
+   *     secret key
+   */
   public CompletableFuture<CaptureResponse> capture(
       String url, CaptureOptions options, CaptureHttpMethod method) {
     PreparedCapture prepared = support.prepare(url, options, method);

@@ -7,14 +7,20 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -197,19 +203,35 @@ class CaptureSerializationTest {
   }
 
   @Test
-  void signedPostWithAWholeDoubleMatchesApiCanonicalization() throws Exception {
+  void clientsWithASecretKeyRefusePostWithoutCallingTheTransport() {
     TestHttpClient transport = new TestHttpClient();
-    ScreenshotScoutClient client = client(transport, "ak_test", "sk_test");
-    String expectedSignature = "9455e37a8893f7a2e43d5bdf8203986139f66f768bd7ccebb8c8df80604a9683";
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .accessKey("ak_test")
+            .secretKey("sk_test")
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    CaptureOptions options = CaptureOptions.builder().pdfScale(2.0).build();
+    List<Executable> postCaptures =
+        List.of(
+            () -> client.capture("https://example.com"),
+            () -> client.capture("https://example.com", options),
+            () -> client.capture("https://example.com", options, CaptureHttpMethod.POST),
+            () -> asyncClient.capture("https://example.com"),
+            () -> asyncClient.capture("https://example.com", options),
+            () -> asyncClient.capture("https://example.com", options, CaptureHttpMethod.POST));
 
-    client.capture("https://example.com", CaptureOptions.builder().pdfScale(2.0).build());
-
-    assertEquals(
-        "{\"url\":\"https://example.com\",\"pdf_scale\":2,\"signature\":\""
-            + expectedSignature
-            + "\"}",
-        new String(
-            TestHttpClient.requestBody(transport.requests().get(0)), StandardCharsets.UTF_8));
+    for (Executable postCapture : postCaptures) {
+      ScreenshotScoutConfigurationException error =
+          assertThrows(ScreenshotScoutConfigurationException.class, postCapture);
+      assertEquals(
+          "POST requests can't be signed. This client has a secret key: send this capture with"
+              + " method GET, or use a client without a secret key and an API key that doesn't"
+              + " require signed requests.",
+          error.getMessage());
+    }
+    assertTrue(transport.requests().isEmpty());
   }
 
   @Test
@@ -259,7 +281,7 @@ class CaptureSerializationTest {
     assertEquals(
         "Bearer query-secret", request.headers().firstValue("authorization").orElseThrow());
     assertEquals(
-        "url=https%3A%2F%2Fexample.com%2Fa+path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=",
+        "url=https%3A%2F%2Fexample.com%2Fa%20path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=",
         request.uri().getRawQuery());
     Map<String, List<String>> query = TestHttpClient.queryParameters(request.uri());
     assertFalse(query.containsKey("access_key"));
@@ -284,12 +306,36 @@ class CaptureSerializationTest {
 
     assertTrue(transport.requests().isEmpty());
     assertEquals(
-        "https://api.screenshotscout.com/v1/capture?access_key=query-key&url=https%3A%2F%2Fexample.com%2Fa+path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=",
+        "https://api.screenshotscout.com/v1/capture?access_key=query-key&url=https%3A%2F%2Fexample.com%2Fa%20path&cookies=a%3D1&cookies=a%3D1&headers=X-Test%3Aone&headers=X-Test%3Aone&delay=0&full_page=false&cache_key=",
         url);
   }
 
   @Test
-  void getPostAndGeneratedUrlSignaturesMatchTheApiAlgorithm() throws Exception {
+  void queriesUseRfc3986PercentEncoding() {
+    assertEquals(
+        "a%20b=AZaz09-._~%20%2A%21%27%28%29%2B%26%3D%25%2F%C3%A9%F0%9F%98%80",
+        CaptureSerializer.encodeQuery(
+            List.of(new WirePair("a b", "AZaz09-._~ *!'()+&=%/\u00e9\ud83d\ude00"))));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("signingVectors")
+  void signedTextMatchesTheSharedSigningVectors(
+      String name,
+      String accessKey,
+      String secretKey,
+      List<WirePair> params,
+      String signedText,
+      String signature)
+      throws Exception {
+    String actual = CaptureSerializer.buildCanonicalQuery(params, accessKey);
+
+    assertEquals(signedText, actual);
+    assertEquals(signature, hmacSha256Hex(secretKey, actual));
+  }
+
+  @Test
+  void getAndGeneratedUrlSignaturesMatchTheApiAlgorithm() throws Exception {
     TestHttpClient transport = new TestHttpClient();
     transport.respond(
         200,
@@ -304,26 +350,23 @@ class CaptureSerializationTest {
             .headers(List.of("X-Test:one", "X-Test:two"))
             .build();
     String target = "https://example.com/a b?x=1&y=2";
-    String expected = "0c4928ba691575903f27b911b8ea1a536604ca070d60d886e10c127c05e236fc";
+    String expected = "6419f2ac8c0440f1e341b547630606c9dc74dacfbb2df8e122fc9ae26831d893";
 
     client.capture(target, options, CaptureHttpMethod.GET);
-    client.capture(target, options, CaptureHttpMethod.POST);
     String built = client.buildCaptureUrl(target, options);
 
+    assertEquals(
+        "url=https%3A%2F%2Fexample.com%2Fa%20b%3Fx%3D1%26y%3D2&response_type=json&headers=X-Test%3Aone&headers=X-Test%3Atwo&delay=0&full_page=false&signature="
+            + expected,
+        transport.requests().get(0).uri().getRawQuery());
     Map<String, List<String>> getQuery =
         TestHttpClient.queryParameters(transport.requests().get(0).uri());
-    @SuppressWarnings("unchecked")
-    Map<String, Object> postBody =
-        (Map<String, Object>)
-            JsonCodec.parse(TestHttpClient.requestBody(transport.requests().get(1)));
     Map<String, List<String>> builtQuery =
         TestHttpClient.queryParameters(java.net.URI.create(built));
     assertEquals(List.of(expected), getQuery.get("signature"));
-    assertEquals(expected, postBody.get("signature"));
     assertEquals(List.of(expected), builtQuery.get("signature"));
     assertEquals(List.of("ak_test"), builtQuery.get("access_key"));
     assertFalse(getQuery.containsKey("access_key"));
-    assertFalse(postBody.containsKey("access_key"));
     assertFalse(built.contains("sk_test"));
   }
 
@@ -362,6 +405,50 @@ class CaptureSerializationTest {
   }
 
   @Test
+  void unpairedSurrogatesFailLocallyAndNameTheOption() {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClient client = client(transport, "ak_test", "sk_test");
+
+    ScreenshotScoutSerializationException urlError =
+        assertThrows(
+            ScreenshotScoutSerializationException.class,
+            () -> client.buildCaptureUrl("https://example.com/\ud83d"));
+    assertEquals("The capture target URL must contain valid Unicode text.", urlError.getMessage());
+    assertEquals("url", urlError.option().orElseThrow());
+
+    ScreenshotScoutSerializationException optionError =
+        assertThrows(
+            ScreenshotScoutSerializationException.class,
+            () ->
+                client.capture(
+                    "https://example.com",
+                    CaptureOptions.builder().cacheKey("a\ude00b").build(),
+                    CaptureHttpMethod.GET));
+    assertEquals(
+        "The capture option \"cacheKey\" must contain valid Unicode text.",
+        optionError.getMessage());
+    assertEquals("cacheKey", optionError.option().orElseThrow());
+
+    ScreenshotScoutSerializationException repeatedError =
+        assertThrows(
+            ScreenshotScoutSerializationException.class,
+            () ->
+                client.buildCaptureUrl(
+                    "https://example.com",
+                    CaptureOptions.builder().hideSelectors(List.of("#a", "\ude00\ud83d")).build()));
+    assertEquals(
+        "The capture option \"hideSelectors\" must contain only valid Unicode strings.",
+        repeatedError.getMessage());
+    assertEquals("hideSelectors", repeatedError.option().orElseThrow());
+    assertTrue(transport.requests().isEmpty());
+
+    assertTrue(
+        client
+            .buildCaptureUrl("https://example.com/\ud83d\ude00")
+            .contains("&url=https%3A%2F%2Fexample.com%2F%F0%9F%98%80&signature="));
+  }
+
+  @Test
   void builtOptionsCopyAndProtectRepeatedCollections() {
     List<String> mutable = new ArrayList<>(List.of("a=1", "a=1"));
     CaptureOptions options = CaptureOptions.builder().cookies(mutable).build();
@@ -389,6 +476,41 @@ class CaptureSerializationTest {
         Arguments.of(1_000_000_000_000_000_128.0, "1000000000000000100"),
         Arguments.of(Double.MIN_VALUE, "5e-324"),
         Arguments.of(Double.MAX_VALUE, "1.7976931348623157e+308"));
+  }
+
+  // The gateway and every SDK test the same signing-vectors.json, copied unchanged.
+  private static Stream<Arguments> signingVectors() throws IOException {
+    byte[] json;
+    try (InputStream stream =
+        CaptureSerializationTest.class.getResourceAsStream("/signing-vectors.json")) {
+      json = stream.readAllBytes();
+    }
+    // JsonCodec parses the raw bytes as UTF-8, so the platform charset never applies.
+    Map<?, ?> file = (Map<?, ?>) JsonCodec.parse(json);
+    List<Arguments> vectors = new ArrayList<>();
+    for (Object item : (List<?>) file.get("vectors")) {
+      Map<?, ?> vector = (Map<?, ?>) item;
+      List<WirePair> params = new ArrayList<>();
+      for (Object param : (List<?>) vector.get("params")) {
+        List<?> pair = (List<?>) param;
+        params.add(new WirePair((String) pair.get(0), (String) pair.get(1)));
+      }
+      vectors.add(
+          Arguments.of(
+              vector.get("name"),
+              vector.get("access_key"),
+              vector.get("secret_key"),
+              params,
+              vector.get("signed_text"),
+              vector.get("signature")));
+    }
+    return vectors.stream();
+  }
+
+  private static String hmacSha256Hex(String secretKey, String text) throws Exception {
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+    return HexFormat.of().formatHex(mac.doFinal(text.getBytes(StandardCharsets.UTF_8)));
   }
 
   private static ScreenshotScoutClient client(

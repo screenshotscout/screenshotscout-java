@@ -20,7 +20,10 @@ public final class ScreenshotScoutClientBuilder {
     return this;
   }
 
-  /** Sets the optional signing secret. A non-null value must be non-blank. */
+  /**
+   * Sets the optional signing secret. A non-null value must be non-blank. A client with a secret
+   * key signs GET requests and capture URLs, and refuses POST requests, which can't be signed.
+   */
   public ScreenshotScoutClientBuilder secretKey(String value) {
     secretKey = value;
     return this;
