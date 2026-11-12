@@ -9,11 +9,8 @@ public final class JsonCaptureExample {
   private JsonCaptureExample() {}
 
   public static void main(String[] args) throws Exception {
-    String accessKey = System.getenv("SCREENSHOTSCOUT_ACCESS_KEY");
-    if (accessKey == null || accessKey.isBlank()) {
-      throw new IllegalStateException("Set SCREENSHOTSCOUT_ACCESS_KEY first.");
-    }
-    ScreenshotScoutClient client = ScreenshotScoutClient.builder().accessKey(accessKey).build();
+    // Reads SCREENSHOTSCOUT_ACCESS_KEY
+    ScreenshotScoutClient client = ScreenshotScoutClient.fromEnv();
 
     CaptureOptions options =
         CaptureOptions.builder()

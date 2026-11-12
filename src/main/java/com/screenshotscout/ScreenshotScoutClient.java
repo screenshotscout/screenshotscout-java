@@ -2,6 +2,7 @@ package com.screenshotscout;
 
 import java.io.IOException;
 import java.net.http.HttpResponse;
+import java.util.function.Function;
 
 /** Reusable, thread-safe blocking Screenshot Scout client. */
 public final class ScreenshotScoutClient {
@@ -16,27 +17,41 @@ public final class ScreenshotScoutClient {
   }
 
   /**
-   * Sends one POST request and waits for the final inline capture response.
+   * Creates a client with the access key from {@code SCREENSHOTSCOUT_ACCESS_KEY} and, if it's set,
+   * the secret key from {@code SCREENSHOTSCOUT_SECRET_KEY}. Same as {@code
+   * builder().fromEnv().build()}.
    *
-   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
-   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
+   * @throws ScreenshotScoutConfigurationException if {@code SCREENSHOTSCOUT_ACCESS_KEY} isn't set,
+   *     or either variable holds a blank or invalid key
+   */
+  public static ScreenshotScoutClient fromEnv() {
+    return fromEnv(System::getenv);
+  }
+
+  static ScreenshotScoutClient fromEnv(Function<String, String> environment) {
+    return builder().environment(environment).fromEnv().build();
+  }
+
+  /**
+   * Sends one POST request, or one signed GET request when this client has a secret key, and waits
+   * for the final inline capture response.
+   *
    * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
    *     preserved
    */
   public CaptureResponse capture(String url) throws InterruptedException {
-    return capture(url, null, CaptureHttpMethod.POST);
+    return capture(url, null);
   }
 
   /**
-   * Sends one POST request and waits for the final inline capture response.
+   * Sends one POST request, or one signed GET request when this client has a secret key, and waits
+   * for the final inline capture response.
    *
-   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
-   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
    * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
    *     preserved
    */
   public CaptureResponse capture(String url, CaptureOptions options) throws InterruptedException {
-    return capture(url, options, CaptureHttpMethod.POST);
+    return send(support.prepare(url, options));
   }
 
   /**
@@ -50,7 +65,10 @@ public final class ScreenshotScoutClient {
    */
   public CaptureResponse capture(String url, CaptureOptions options, CaptureHttpMethod method)
       throws InterruptedException {
-    PreparedCapture prepared = support.prepare(url, options, method);
+    return send(support.prepare(url, options, method));
+  }
+
+  private CaptureResponse send(PreparedCapture prepared) throws InterruptedException {
     if (Thread.currentThread().isInterrupted()) {
       throw new InterruptedException("The Screenshot Scout capture call was interrupted.");
     }

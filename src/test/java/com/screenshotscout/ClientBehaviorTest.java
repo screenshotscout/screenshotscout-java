@@ -43,6 +43,24 @@ class ClientBehaviorTest {
   }
 
   @Test
+  void clientConfigurationDescriptionHidesBothKeys() {
+    TestHttpClient transport = new TestHttpClient();
+
+    assertEquals(
+        "ClientConfiguration[accessKey=<redacted>, secretKey=<redacted>,"
+            + " secretKeyFromEnvironment=true, httpClient="
+            + transport
+            + "]",
+        new ClientConfiguration("ak_test", "sk_test", true, transport).toString());
+    assertEquals(
+        "ClientConfiguration[accessKey=<redacted>, secretKey=null,"
+            + " secretKeyFromEnvironment=false, httpClient="
+            + transport
+            + "]",
+        new ClientConfiguration("ak_test", null, false, transport).toString());
+  }
+
+  @Test
   void openServiceValuesRemainRawAndMethodSelectorIsClosed() {
     assertEquals("webp", CaptureFormat.WEBP.value());
     assertEquals("future-format", CaptureFormat.fromString("future-format").value());

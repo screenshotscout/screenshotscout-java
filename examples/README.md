@@ -1,8 +1,7 @@
 # Examples
 
-These examples receive credentials from the application environment and pass them explicitly to
-the SDK. The core SDK never reads environment variables. Each example contains its own credential
-setup and does not depend on shared example helper code.
+Each example creates its own client with `fromEnv()` and does not depend on shared example helper
+code.
 
 From the repository root, install the local package and compile the examples:
 
@@ -19,7 +18,8 @@ classpath:
 - `com.screenshotscout.examples.AsyncIoCaptureExample`
 - `com.screenshotscout.examples.BuildCaptureUrlExample`
 
-`BuildCaptureUrlExample` signs the generated URL when `SCREENSHOTSCOUT_SECRET_KEY` is set.
+If `SCREENSHOTSCOUT_SECRET_KEY` is also set, the clients sign their requests and the URL that
+`BuildCaptureUrlExample` prints.
 
 The async-I/O example waits for the final inline Screenshot Scout response. It is not a background
 capture, queued job, callback, or webhook example.

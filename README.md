@@ -17,16 +17,18 @@ Add the SDK to your project:
 <dependency>
   <groupId>com.screenshotscout</groupId>
   <artifactId>screenshotscout</artifactId>
-  <version>0.4.0</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
 ## Get your API credentials
 
 [Sign up for Screenshot Scout](https://screenshotscout.com/auth/signup) or sign in, then copy your
-access key and secret key from the [API Keys page](https://screenshotscout.com/app/api-keys). Store
-both securely. The access key is required. The secret key is optional and enables
-[signed requests](#signed-requests).
+access key from the [API Keys page](https://screenshotscout.com/app/api-keys). You only need the
+secret key for [signed requests](#signed-requests).
+
+Set the access key as the `SCREENSHOTSCOUT_ACCESS_KEY` environment variable, or
+[pass it in code](#pass-the-keys-yourself).
 
 ## Capture a screenshot
 
@@ -38,10 +40,8 @@ import com.screenshotscout.ScreenshotScoutClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-ScreenshotScoutClient client =
-    ScreenshotScoutClient.builder()
-        .accessKey("YOUR_ACCESS_KEY")
-        .build();
+// Reads SCREENSHOTSCOUT_ACCESS_KEY
+ScreenshotScoutClient client = ScreenshotScoutClient.fromEnv();
 
 CaptureResponse response =
     client.capture(
@@ -54,7 +54,8 @@ if (response instanceof BinaryCaptureResponse binary) {
 }
 ```
 
-POST is used by default. Without `responseType`, `capture` returns a `BinaryCaptureResponse`.
+POST is the default, or GET when the client has a secret key. Without `responseType`, `capture`
+returns a `BinaryCaptureResponse`.
 
 ## Request a JSON result
 
@@ -88,10 +89,8 @@ import com.screenshotscout.BinaryCaptureResponse;
 import com.screenshotscout.ScreenshotScoutAsyncClient;
 import java.util.concurrent.CompletableFuture;
 
-ScreenshotScoutAsyncClient asyncClient =
-    ScreenshotScoutAsyncClient.builder()
-        .accessKey("YOUR_ACCESS_KEY")
-        .buildAsync();
+// Reads SCREENSHOTSCOUT_ACCESS_KEY
+ScreenshotScoutAsyncClient asyncClient = ScreenshotScoutAsyncClient.fromEnv();
 
 CompletableFuture<Void> finished =
     asyncClient
@@ -109,7 +108,8 @@ Cancel the returned future to cancel an in-flight request.
 
 ## Use GET
 
-POST is used by default. Pass `CaptureHttpMethod.GET` to send a GET request:
+POST is the default, or GET when the client has a secret key. Pass `CaptureHttpMethod.GET` to send
+a GET request:
 
 ```java
 import com.screenshotscout.CaptureFormat;
@@ -144,23 +144,38 @@ browser or user, configure a secret key and enable **Require signed requests** o
 
 ## Signed requests
 
+Set the API key's secret key as the `SCREENSHOTSCOUT_SECRET_KEY` environment variable. A client
+from `fromEnv()` then signs its capture requests and the capture URLs it builds, with no change to
+your code:
+
 ```java
-ScreenshotScoutClient signedClient =
-    ScreenshotScoutClient.builder()
-        .accessKey("YOUR_ACCESS_KEY")
-        .secretKey("YOUR_SECRET_KEY")
-        .build();
+// Reads SCREENSHOTSCOUT_ACCESS_KEY and SCREENSHOTSCOUT_SECRET_KEY
+ScreenshotScoutClient signedClient = ScreenshotScoutClient.fromEnv();
 
 signedClient.capture(
     "https://example.com",
-    CaptureOptions.builder().fullPage(true).build(),
-    CaptureHttpMethod.GET);
+    CaptureOptions.builder().fullPage(true).build());
 ```
 
-When a secret key is configured, the client automatically signs generated capture URLs and GET
-requests. POST requests can't be signed, so capture with `CaptureHttpMethod.GET`, as shown above.
-The secret key stays in your application and is never transmitted. See the
-[signed requests guide](https://screenshotscout.com/docs/signed-requests).
+The secret key is used locally and is never transmitted. See the
+[signed requests guide](https://screenshotscout.com/docs/signed-requests) for details.
+
+## Pass the keys yourself
+
+To use keys from somewhere other than the environment, such as a secrets manager or per-customer
+settings, pass them to the builder:
+
+```java
+ScreenshotScoutClient client =
+    ScreenshotScoutClient.builder()
+        .accessKey(config.accessKey())
+        .secretKey(config.secretKey()) // optional
+        .build();
+```
+
+Call `buildAsync()` instead of `build()` to create a `ScreenshotScoutAsyncClient`. A builder without
+`fromEnv()` never reads the environment, and `fromEnv()` can't be combined with `accessKey()` or
+`secretKey()`.
 
 ## Capture options
 
@@ -229,7 +244,7 @@ HttpClient transport =
 
 ScreenshotScoutClient client =
     ScreenshotScoutClient.builder()
-        .accessKey("YOUR_ACCESS_KEY")
+        .fromEnv() // Reads SCREENSHOTSCOUT_ACCESS_KEY
         .httpClient(transport)
         .build();
 ```

@@ -24,16 +24,27 @@ final class ScreenshotScoutClientSupport {
 
   private final String accessKey;
   private final String secretKey;
+  private final boolean secretKeyFromEnvironment;
   private final java.net.http.HttpClient httpClient;
 
   ScreenshotScoutClientSupport(ClientConfiguration configuration) {
     accessKey = configuration.accessKey();
     secretKey = configuration.secretKey();
+    secretKeyFromEnvironment = configuration.secretKeyFromEnvironment();
     httpClient = configuration.httpClient();
   }
 
   java.net.http.HttpClient httpClient() {
     return httpClient;
+  }
+
+  /**
+   * Prepares a capture whose caller didn't choose a method. A client with a secret key sends GET,
+   * because POST requests can't be signed; other clients send POST.
+   */
+  PreparedCapture prepare(String targetUrl, CaptureOptions options) {
+    return prepare(
+        targetUrl, options, secretKey == null ? CaptureHttpMethod.POST : CaptureHttpMethod.GET);
   }
 
   PreparedCapture prepare(String targetUrl, CaptureOptions options, CaptureHttpMethod method) {
@@ -44,10 +55,15 @@ final class ScreenshotScoutClientSupport {
     SerializedCaptureOptions serialized = CaptureSerializer.serialize(targetUrl, options);
     ExpectedResponseKind expectedKind = expectedResponseKind(options);
     if (secretKey != null && method == CaptureHttpMethod.POST) {
+      String source =
+          secretKeyFromEnvironment
+              ? " from " + ScreenshotScoutClientBuilder.SECRET_KEY_VARIABLE
+              : "";
       throw new ScreenshotScoutConfigurationException(
-          "POST requests can't be signed. This client has a secret key: send this capture with"
-              + " method GET, or use a client without a secret key and an API key that doesn't"
-              + " require signed requests.");
+          "POST requests can't be signed. This client has a secret key"
+              + source
+              + ": send this capture with method GET, or use a client without a secret key and an"
+              + " API key that doesn't require signed requests.");
     }
     String signature = createSignature(serialized.pairs());
     HttpRequest request = createRequest(serialized, method, signature);

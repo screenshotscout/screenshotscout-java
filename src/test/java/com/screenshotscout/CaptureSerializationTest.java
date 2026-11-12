@@ -203,7 +203,7 @@ class CaptureSerializationTest {
   }
 
   @Test
-  void clientsWithASecretKeyRefusePostWithoutCallingTheTransport() {
+  void clientsWithASecretKeyRefuseAnExplicitPostWithoutCallingTheTransport() {
     TestHttpClient transport = new TestHttpClient();
     ScreenshotScoutClientBuilder builder =
         ScreenshotScoutClient.builder()
@@ -215,11 +215,7 @@ class CaptureSerializationTest {
     CaptureOptions options = CaptureOptions.builder().pdfScale(2.0).build();
     List<Executable> postCaptures =
         List.of(
-            () -> client.capture("https://example.com"),
-            () -> client.capture("https://example.com", options),
             () -> client.capture("https://example.com", options, CaptureHttpMethod.POST),
-            () -> asyncClient.capture("https://example.com"),
-            () -> asyncClient.capture("https://example.com", options),
             () -> asyncClient.capture("https://example.com", options, CaptureHttpMethod.POST));
 
     for (Executable postCapture : postCaptures) {
@@ -232,6 +228,35 @@ class CaptureSerializationTest {
           error.getMessage());
     }
     assertTrue(transport.requests().isEmpty());
+  }
+
+  @Test
+  void clientsWithASecretKeySendASignedGetWhenNoMethodIsChosen() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .accessKey("YOUR_ACCESS_KEY")
+            .secretKey("YOUR_SECRET_KEY")
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    CaptureOptions noOptions = CaptureOptions.builder().build();
+
+    client.capture("https://example.com/");
+    client.capture("https://example.com/", noOptions);
+    asyncClient.capture("https://example.com/").join();
+    asyncClient.capture("https://example.com/", noOptions).join();
+
+    // The signature from the "docs minimal URL" signing vector.
+    assertEquals(4, transport.requests().size());
+    for (HttpRequest request : transport.requests()) {
+      assertEquals("GET", request.method());
+      assertTrue(request.bodyPublisher().isEmpty());
+      assertEquals(
+          "url=https%3A%2F%2Fexample.com%2F"
+              + "&signature=b56c41ea153c60ba222c177cd2a95ce343781d1d28ed8bbdc203a847a99752f4",
+          request.uri().getRawQuery());
+    }
   }
 
   @Test

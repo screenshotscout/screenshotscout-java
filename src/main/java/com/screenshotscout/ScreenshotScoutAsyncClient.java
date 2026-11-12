@@ -4,6 +4,7 @@ import java.net.http.HttpResponse;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.function.Function;
 
 /**
  * Reusable, thread-safe CompletableFuture-based async-I/O client. Each capture waits for the final
@@ -21,23 +22,35 @@ public final class ScreenshotScoutAsyncClient {
   }
 
   /**
-   * Starts one POST call whose future completes with the final inline capture response.
+   * Creates a client with the access key from {@code SCREENSHOTSCOUT_ACCESS_KEY} and, if it's set,
+   * the secret key from {@code SCREENSHOTSCOUT_SECRET_KEY}. Same as {@code
+   * builder().fromEnv().buildAsync()}.
    *
-   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
-   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
+   * @throws ScreenshotScoutConfigurationException if {@code SCREENSHOTSCOUT_ACCESS_KEY} isn't set,
+   *     or either variable holds a blank or invalid key
    */
-  public CompletableFuture<CaptureResponse> capture(String url) {
-    return capture(url, null, CaptureHttpMethod.POST);
+  public static ScreenshotScoutAsyncClient fromEnv() {
+    return fromEnv(System::getenv);
+  }
+
+  static ScreenshotScoutAsyncClient fromEnv(Function<String, String> environment) {
+    return builder().environment(environment).fromEnv().buildAsync();
   }
 
   /**
-   * Starts one POST call whose future completes with the final inline capture response.
-   *
-   * @throws ScreenshotScoutConfigurationException if this client has a secret key, because POST
-   *     requests can't be signed; pass {@link CaptureHttpMethod#GET} instead
+   * Starts one POST call, or one signed GET call when this client has a secret key, whose future
+   * completes with the final inline capture response.
+   */
+  public CompletableFuture<CaptureResponse> capture(String url) {
+    return capture(url, null);
+  }
+
+  /**
+   * Starts one POST call, or one signed GET call when this client has a secret key, whose future
+   * completes with the final inline capture response.
    */
   public CompletableFuture<CaptureResponse> capture(String url, CaptureOptions options) {
-    return capture(url, options, CaptureHttpMethod.POST);
+    return send(support.prepare(url, options));
   }
 
   /**
@@ -49,7 +62,10 @@ public final class ScreenshotScoutAsyncClient {
    */
   public CompletableFuture<CaptureResponse> capture(
       String url, CaptureOptions options, CaptureHttpMethod method) {
-    PreparedCapture prepared = support.prepare(url, options, method);
+    return send(support.prepare(url, options, method));
+  }
+
+  private CompletableFuture<CaptureResponse> send(PreparedCapture prepared) {
     CompletableFuture<HttpResponse<byte[]>> transportFuture;
     try {
       transportFuture =

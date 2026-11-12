@@ -8,12 +8,8 @@ public final class AsyncIoCaptureExample {
   private AsyncIoCaptureExample() {}
 
   public static void main(String[] args) {
-    String accessKey = System.getenv("SCREENSHOTSCOUT_ACCESS_KEY");
-    if (accessKey == null || accessKey.isBlank()) {
-      throw new IllegalStateException("Set SCREENSHOTSCOUT_ACCESS_KEY first.");
-    }
-    ScreenshotScoutAsyncClient client =
-        ScreenshotScoutAsyncClient.builder().accessKey(accessKey).buildAsync();
+    // Reads SCREENSHOTSCOUT_ACCESS_KEY
+    ScreenshotScoutAsyncClient client = ScreenshotScoutAsyncClient.fromEnv();
 
     client
         .capture("https://example.com")
