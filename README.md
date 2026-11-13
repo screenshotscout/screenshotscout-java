@@ -17,7 +17,7 @@ Add the SDK to your project:
 <dependency>
   <groupId>com.screenshotscout</groupId>
   <artifactId>screenshotscout</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
@@ -176,6 +176,23 @@ ScreenshotScoutClient client =
 Call `buildAsync()` instead of `build()` to create a `ScreenshotScoutAsyncClient`. A builder without
 `fromEnv()` never reads the environment, and `fromEnv()` can't be combined with `accessKey()` or
 `secretKey()`.
+
+## Send requests to another server
+
+To send requests to another server, such as your own proxy or a mock server, pass its base URL to
+the builder, or set it as the `SCREENSHOTSCOUT_BASE_URL` environment variable, which `fromEnv()`
+reads:
+
+```java
+ScreenshotScoutClient client =
+    ScreenshotScoutClient.builder()
+        .fromEnv() // Reads SCREENSHOTSCOUT_ACCESS_KEY
+        .baseUrl("https://proxy.example.com")
+        .build();
+```
+
+The client sends captures to the base URL plus `/v1/capture`, and `buildCaptureUrl` builds URLs on
+it. A base URL you pass wins over the variable.
 
 ## Capture options
 

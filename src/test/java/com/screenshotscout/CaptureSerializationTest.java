@@ -396,6 +396,158 @@ class CaptureSerializationTest {
   }
 
   @Test
+  void aBaseUrlIsUsedForPostAndGetRequestsAndBuiltUrls() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .accessKey("ak_test")
+            .baseUrl("http://localhost:8787")
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+
+    client.capture("https://example.com");
+    asyncClient.capture("https://example.com").join();
+    client.capture("https://example.com", null, CaptureHttpMethod.GET);
+    asyncClient.capture("https://example.com", null, CaptureHttpMethod.GET).join();
+
+    List<HttpRequest> requests = transport.requests();
+    assertEquals(4, requests.size());
+    for (HttpRequest request : requests.subList(0, 2)) {
+      assertEquals("POST", request.method());
+      assertEquals("http://localhost:8787/v1/capture", request.uri().toString());
+    }
+    for (HttpRequest request : requests.subList(2, 4)) {
+      assertEquals("GET", request.method());
+      assertEquals(
+          "http://localhost:8787/v1/capture?url=https%3A%2F%2Fexample.com",
+          request.uri().toString());
+    }
+    String expectedUrl =
+        "http://localhost:8787/v1/capture?access_key=ak_test&url=https%3A%2F%2Fexample.com";
+    assertEquals(expectedUrl, client.buildCaptureUrl("https://example.com"));
+    assertEquals(expectedUrl, asyncClient.buildCaptureUrl("https://example.com"));
+  }
+
+  @Test
+  void aBaseUrlLeavesSignaturesUnchanged() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    transport.respond(
+        200,
+        Map.of("content-type", List.of("application/json")),
+        "{}".getBytes(StandardCharsets.UTF_8));
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .accessKey("ak_test")
+            .secretKey("sk_test")
+            .baseUrl("https://proxy.example.com/screenshotscout/")
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    CaptureOptions options =
+        CaptureOptions.builder()
+            .responseType(CaptureResponseType.JSON)
+            .fullPage(false)
+            .delay(0)
+            .headers(List.of("X-Test:one", "X-Test:two"))
+            .build();
+    String target = "https://example.com/a b?x=1&y=2";
+    // The query and signature getAndGeneratedUrlSignaturesMatchTheApiAlgorithm expects.
+    String query =
+        "url=https%3A%2F%2Fexample.com%2Fa%20b%3Fx%3D1%26y%3D2&response_type=json&headers=X-Test%3Aone&headers=X-Test%3Atwo&delay=0&full_page=false&signature=6419f2ac8c0440f1e341b547630606c9dc74dacfbb2df8e122fc9ae26831d893";
+
+    client.capture(target, options);
+    asyncClient.capture(target, options).join();
+
+    assertEquals(2, transport.requests().size());
+    for (HttpRequest request : transport.requests()) {
+      assertEquals("GET", request.method());
+      assertEquals(
+          "https://proxy.example.com/screenshotscout/v1/capture?" + query,
+          request.uri().toString());
+    }
+    String expectedUrl =
+        "https://proxy.example.com/screenshotscout/v1/capture?access_key=ak_test&" + query;
+    assertEquals(expectedUrl, client.buildCaptureUrl(target, options));
+    assertEquals(expectedUrl, asyncClient.buildCaptureUrl(target, options));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("baseUrls")
+  void aBaseUrlLosesItsTrailingSlashesAndKeepsItsPath(String baseUrl, String captureEndpoint)
+      throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClient client =
+        ScreenshotScoutClient.builder()
+            .accessKey("key")
+            .baseUrl(baseUrl)
+            .httpClient(transport)
+            .build();
+
+    client.capture("https://example.com");
+    client.capture("https://example.com", null, CaptureHttpMethod.GET);
+
+    assertEquals(captureEndpoint, transport.requests().get(0).uri().toString());
+    assertEquals(
+        captureEndpoint + "?url=https%3A%2F%2Fexample.com",
+        transport.requests().get(1).uri().toString());
+    assertEquals(
+        captureEndpoint + "?access_key=key&url=https%3A%2F%2Fexample.com",
+        client.buildCaptureUrl("https://example.com"));
+  }
+
+  @Test
+  void anEmptyOrNullBaseUrlMeansTheScreenshotScoutApi() throws Exception {
+    for (String baseUrl : new String[] {"", null}) {
+      TestHttpClient transport = new TestHttpClient();
+      ScreenshotScoutClient client =
+          ScreenshotScoutClient.builder()
+              .accessKey("key")
+              .baseUrl(baseUrl)
+              .httpClient(transport)
+              .build();
+
+      client.capture("https://example.com");
+
+      assertEquals(
+          "https://api.screenshotscout.com/v1/capture",
+          transport.requests().get(0).uri().toString());
+      assertEquals(
+          "https://api.screenshotscout.com/v1/capture?access_key=key&url=https%3A%2F%2Fexample.com",
+          client.buildCaptureUrl("https://example.com"));
+    }
+  }
+
+  @Test
+  void aMalformedBaseUrlFailsWhenARequestIsConstructedAndBuiltUrlsUseItAsGiven() {
+    for (String baseUrl : List.of("not a url", "localhost:8787", "proxy.example.com")) {
+      TestHttpClient transport = new TestHttpClient();
+      ScreenshotScoutClientBuilder builder =
+          ScreenshotScoutClient.builder().accessKey("key").baseUrl(baseUrl).httpClient(transport);
+      ScreenshotScoutClient client = builder.build();
+      ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+      List<Executable> captures =
+          List.of(
+              () -> client.capture("https://example.com"),
+              () -> client.capture("https://example.com", null, CaptureHttpMethod.GET),
+              () -> asyncClient.capture("https://example.com"),
+              () -> asyncClient.capture("https://example.com", null, CaptureHttpMethod.GET));
+
+      for (Executable capture : captures) {
+        ScreenshotScoutSerializationException error =
+            assertThrows(ScreenshotScoutSerializationException.class, capture);
+        assertEquals(
+            "The Screenshot Scout HTTP request could not be constructed.", error.getMessage());
+        assertInstanceOf(IllegalArgumentException.class, error.getCause());
+      }
+      assertTrue(transport.requests().isEmpty());
+      assertEquals(
+          baseUrl + "/v1/capture?access_key=key&url=https%3A%2F%2Fexample.com",
+          client.buildCaptureUrl("https://example.com"));
+    }
+  }
+
+  @Test
   @SuppressWarnings({"rawtypes", "unchecked"})
   void unsafeValuesFailLocallyWithoutCallingTheTransport() {
     TestHttpClient transport = new TestHttpClient();
@@ -501,6 +653,17 @@ class CaptureSerializationTest {
         Arguments.of(1_000_000_000_000_000_128.0, "1000000000000000100"),
         Arguments.of(Double.MIN_VALUE, "5e-324"),
         Arguments.of(Double.MAX_VALUE, "1.7976931348623157e+308"));
+  }
+
+  private static Stream<Arguments> baseUrls() {
+    return Stream.of(
+        Arguments.of("http://localhost:8787", "http://localhost:8787/v1/capture"),
+        Arguments.of("http://localhost:8787/", "http://localhost:8787/v1/capture"),
+        Arguments.of(
+            "https://proxy.example.com/screenshotscout//",
+            "https://proxy.example.com/screenshotscout/v1/capture"),
+        Arguments.of(
+            "https://proxy.example.com/a%20b", "https://proxy.example.com/a%20b/v1/capture"));
   }
 
   // The gateway and every SDK test the same signing-vectors.json, copied unchanged.

@@ -17,12 +17,13 @@ public final class ScreenshotScoutClient {
   }
 
   /**
-   * Creates a client with the access key from {@code SCREENSHOTSCOUT_ACCESS_KEY} and, if it's set,
-   * the secret key from {@code SCREENSHOTSCOUT_SECRET_KEY}. Same as {@code
-   * builder().fromEnv().build()}.
+   * Creates a client with the access key from {@code SCREENSHOTSCOUT_ACCESS_KEY} and, if they're
+   * set, the secret key from {@code SCREENSHOTSCOUT_SECRET_KEY} and the base URL from {@code
+   * SCREENSHOTSCOUT_BASE_URL}. Same as {@code builder().fromEnv().build()}.
    *
    * @throws ScreenshotScoutConfigurationException if {@code SCREENSHOTSCOUT_ACCESS_KEY} isn't set,
-   *     or either variable holds a blank or invalid key
+   *     either variable holds a blank or invalid key, or {@code SCREENSHOTSCOUT_BASE_URL} is set
+   *     but blank
    */
   public static ScreenshotScoutClient fromEnv() {
     return fromEnv(System::getenv);
@@ -84,9 +85,7 @@ public final class ScreenshotScoutClient {
       if (cause instanceof ScreenshotScoutException sdkException) {
         throw sdkException;
       }
-      throw new ScreenshotScoutTransportException(
-          "Screenshot Scout request failed before a complete HTTP response body was received.",
-          cause);
+      throw support.createTransportException(cause);
     }
   }
 

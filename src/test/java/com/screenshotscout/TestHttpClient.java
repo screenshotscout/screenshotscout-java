@@ -31,6 +31,7 @@ final class TestHttpClient extends HttpClient {
   private ResponseSpec response =
       new ResponseSpec(200, Map.of("content-type", List.of("image/png")), new byte[] {1});
   private IOException failure;
+  private RuntimeException sendAsyncException;
   private CompletableFuture<HttpResponse<byte[]>> pendingBlockingResponse;
   private CompletableFuture<HttpRequest> pendingBlockingRequest;
   private CompletableFuture<HttpResponse<byte[]>> pendingAsyncResponse;
@@ -40,6 +41,7 @@ final class TestHttpClient extends HttpClient {
   void respond(int status, Map<String, List<String>> headers, byte[] body) {
     response = new ResponseSpec(status, headers, body.clone());
     failure = null;
+    sendAsyncException = null;
     pendingBlockingResponse = null;
     pendingBlockingRequest = null;
     pendingAsyncResponse = null;
@@ -47,9 +49,15 @@ final class TestHttpClient extends HttpClient {
 
   void fail(IOException value) {
     failure = value;
+    sendAsyncException = null;
     pendingBlockingResponse = null;
     pendingBlockingRequest = null;
     pendingAsyncResponse = null;
+  }
+
+  /** Makes sendAsync throw the exception instead of returning a future. */
+  void throwFromSendAsync(RuntimeException value) {
+    sendAsyncException = value;
   }
 
   CompletableFuture<HttpResponse<byte[]>> usePendingBlockingResponse() {
@@ -120,6 +128,9 @@ final class TestHttpClient extends HttpClient {
       HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) {
     asyncCalls++;
     requests.add(request);
+    if (sendAsyncException != null) {
+      throw sendAsyncException;
+    }
     CompletableFuture<HttpResponse<byte[]>> selected;
     if (failure != null) {
       selected = CompletableFuture.failedFuture(failure);

@@ -15,8 +15,6 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 final class ScreenshotScoutClientSupport {
-  static final URI CAPTURE_ENDPOINT = URI.create("https://api.screenshotscout.com/v1/capture");
-
   private static final String SCREENSHOT_URL_HEADER = "Screenshot-Scout-Screenshot-URL";
   private static final String SCREENSHOT_URL_EXPIRES_AT_HEADER =
       "Screenshot-Scout-Screenshot-URL-Expires-At";
@@ -25,17 +23,29 @@ final class ScreenshotScoutClientSupport {
   private final String accessKey;
   private final String secretKey;
   private final boolean secretKeyFromEnvironment;
+  private final String captureEndpoint;
+  private final boolean baseUrlFromEnvironment;
   private final java.net.http.HttpClient httpClient;
 
   ScreenshotScoutClientSupport(ClientConfiguration configuration) {
     accessKey = configuration.accessKey();
     secretKey = configuration.secretKey();
     secretKeyFromEnvironment = configuration.secretKeyFromEnvironment();
+    captureEndpoint = configuration.captureEndpoint();
+    baseUrlFromEnvironment = configuration.baseUrlFromEnvironment();
     httpClient = configuration.httpClient();
   }
 
   java.net.http.HttpClient httpClient() {
     return httpClient;
+  }
+
+  /** Wraps a failure that happened before a complete HTTP response body was received. */
+  ScreenshotScoutTransportException createTransportException(Throwable cause) {
+    return new ScreenshotScoutTransportException(
+        "Screenshot Scout request failed before a complete HTTP response body was received."
+            + baseUrlSource(),
+        cause);
   }
 
   /**
@@ -79,7 +89,7 @@ final class ScreenshotScoutClientSupport {
     if (signature != null) {
       pairs.add(new WirePair("signature", signature));
     }
-    return CAPTURE_ENDPOINT + "?" + CaptureSerializer.encodeQuery(pairs);
+    return captureEndpoint + "?" + CaptureSerializer.encodeQuery(pairs);
   }
 
   CaptureResponse decode(HttpResponse<byte[]> response, ExpectedResponseKind expectedKind) {
@@ -101,11 +111,11 @@ final class ScreenshotScoutClientSupport {
         if (signature != null) {
           pairs.add(new WirePair("signature", signature));
         }
-        requestUri = URI.create(CAPTURE_ENDPOINT + "?" + CaptureSerializer.encodeQuery(pairs));
+        requestUri = URI.create(captureEndpoint + "?" + CaptureSerializer.encodeQuery(pairs));
         bodyPublisher = HttpRequest.BodyPublishers.noBody();
         builder = HttpRequest.newBuilder(requestUri).GET();
       } else {
-        requestUri = CAPTURE_ENDPOINT;
+        requestUri = URI.create(captureEndpoint);
         bodyPublisher =
             HttpRequest.BodyPublishers.ofByteArray(
                 CaptureSerializer.serializeJsonBody(serialized.body()));
@@ -119,8 +129,17 @@ final class ScreenshotScoutClientSupport {
       throw exception;
     } catch (RuntimeException cause) {
       throw new ScreenshotScoutSerializationException(
-          "The Screenshot Scout HTTP request could not be constructed.", null, cause);
+          "The Screenshot Scout HTTP request could not be constructed." + baseUrlSource(),
+          null,
+          cause);
     }
+  }
+
+  /** Names the variable the base URL came from, as a sentence to append to a failure message. */
+  private String baseUrlSource() {
+    return baseUrlFromEnvironment
+        ? " The base URL comes from " + ScreenshotScoutClientBuilder.BASE_URL_VARIABLE + "."
+        : "";
   }
 
   private String createSignature(List<WirePair> pairs) {

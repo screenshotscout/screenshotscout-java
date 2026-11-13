@@ -51,13 +51,22 @@ class ClientBehaviorTest {
             + " secretKeyFromEnvironment=true, httpClient="
             + transport
             + "]",
-        new ClientConfiguration("ak_test", "sk_test", true, transport).toString());
+        new ClientConfiguration(
+                "ak_test", "sk_test", true, "https://proxy.example.com/v1/capture", true, transport)
+            .toString());
     assertEquals(
         "ClientConfiguration[accessKey=<redacted>, secretKey=null,"
             + " secretKeyFromEnvironment=false, httpClient="
             + transport
             + "]",
-        new ClientConfiguration("ak_test", null, false, transport).toString());
+        new ClientConfiguration(
+                "ak_test",
+                null,
+                false,
+                "https://api.screenshotscout.com/v1/capture",
+                false,
+                transport)
+            .toString());
   }
 
   @Test

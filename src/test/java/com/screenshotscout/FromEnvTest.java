@@ -2,16 +2,24 @@ package com.screenshotscout;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -24,6 +32,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class FromEnvTest {
   private static final String ACCESS = "SCREENSHOTSCOUT_ACCESS_KEY";
   private static final String SECRET = "SCREENSHOTSCOUT_SECRET_KEY";
+  private static final String BASE_URL = "SCREENSHOTSCOUT_BASE_URL";
   private static final Map<String, String> BOTH_KEYS = Map.of(ACCESS, "ak_test", SECRET, "sk_test");
   private static final String MISSING_ACCESS_KEY =
       "A non-blank Screenshot Scout access key is required. Pass one, or set"
@@ -128,6 +137,29 @@ class FromEnvTest {
         () -> factory.buildCaptureUrl(Map.of(ACCESS, "key with spaces")::get));
   }
 
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("factories")
+  void theBaseUrlVariableIsUsedWhenNoBaseUrlIsPassed(String name, ClientFactory factory) {
+    String url =
+        factory.buildCaptureUrl(
+            Map.of(ACCESS, "ak_test", SECRET, "sk_test", BASE_URL, "http://localhost:8787/")::get);
+
+    assertEquals("http://localhost:8787/v1/capture", endpoint(url));
+    assertEquals(List.of("ak_test"), query(url).get("access_key"));
+    assertEquals(List.of(SIGNATURE), query(url).get("signature"));
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("factories")
+  void anEmptyBaseUrlVariableMeansTheApiAndABlankOneIsAnError(String name, ClientFactory factory) {
+    String url = factory.buildCaptureUrl(Map.of(ACCESS, "ak_test", BASE_URL, "")::get);
+
+    assertEquals("https://api.screenshotscout.com/v1/capture", endpoint(url));
+    assertConfigurationError(
+        "SCREENSHOTSCOUT_BASE_URL is set but blank.",
+        () -> factory.buildCaptureUrl(Map.of(ACCESS, "ak_test", BASE_URL, " \t")::get));
+  }
+
   @Test
   void theVariablesAreReadOnceWhenTheClientIsBuilt() throws Exception {
     Map<String, String> environment = new HashMap<>(BOTH_KEYS);
@@ -143,7 +175,7 @@ class FromEnvTest {
 
     client.capture(TARGET, OPTIONS);
 
-    assertEquals(List.of(ACCESS, SECRET), names);
+    assertEquals(List.of(ACCESS, SECRET, BASE_URL), names);
     HttpRequest request = transport.requests().get(0);
     assertEquals("Bearer ak_test", authorization(request));
     assertEquals(
@@ -258,6 +290,259 @@ class FromEnvTest {
     assertEquals(List.of(), names);
   }
 
+  @Test
+  void theBaseUrlVariableIsReadOnceWhenTheClientIsBuilt() throws Exception {
+    Map<String, String> environment =
+        new HashMap<>(Map.of(ACCESS, "ak_test", BASE_URL, "http://localhost:8787"));
+    List<String> names = new ArrayList<>();
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .environment(recording(environment, names))
+            .fromEnv()
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    environment.put(BASE_URL, "http://changed.example");
+
+    client.capture("https://example.com");
+    asyncClient.capture("https://example.com").join();
+
+    assertEquals(List.of(ACCESS, SECRET, BASE_URL, ACCESS, SECRET, BASE_URL), names);
+    assertEquals(2, transport.requests().size());
+    for (HttpRequest request : transport.requests()) {
+      assertEquals("POST", request.method());
+      assertEquals("http://localhost:8787/v1/capture", request.uri().toString());
+    }
+    assertEquals(
+        "http://localhost:8787/v1/capture?access_key=ak_test&url=https%3A%2F%2Fexample.com",
+        client.buildCaptureUrl("https://example.com"));
+  }
+
+  @Test
+  void anEmptyOrNullBaseUrlInCodeLetsFromEnvReadTheVariable() {
+    for (String baseUrl : new String[] {"", null}) {
+      List<String> names = new ArrayList<>();
+      ScreenshotScoutClient client =
+          ScreenshotScoutClient.builder()
+              .environment(
+                  recording(Map.of(ACCESS, "ak_test", BASE_URL, "http://localhost:8787"), names))
+              .fromEnv()
+              .baseUrl(baseUrl)
+              .httpClient(new TestHttpClient())
+              .build();
+
+      assertEquals(
+          "http://localhost:8787/v1/capture",
+          endpoint(client.buildCaptureUrl("https://example.com")));
+      assertEquals(List.of(ACCESS, SECRET, BASE_URL), names);
+    }
+  }
+
+  @Test
+  void aBaseUrlPassedInCodeWinsOverTheVariable() throws Exception {
+    List<String> names = new ArrayList<>();
+    Function<String, String> environment =
+        recording(Map.of(ACCESS, "ak_test", BASE_URL, "http://localhost:8787"), names);
+    TestHttpClient transport = new TestHttpClient();
+    List<ScreenshotScoutClientBuilder> builders =
+        List.of(
+            ScreenshotScoutClient.builder()
+                .environment(environment)
+                .fromEnv()
+                .baseUrl("https://proxy.example.com"),
+            ScreenshotScoutClient.builder()
+                .environment(environment)
+                .baseUrl("https://proxy.example.com")
+                .fromEnv());
+
+    for (ScreenshotScoutClientBuilder builder : builders) {
+      builder.httpClient(transport);
+      builder.build().capture("https://example.com");
+      builder.buildAsync().capture("https://example.com").join();
+    }
+
+    assertEquals(4, transport.requests().size());
+    for (HttpRequest request : transport.requests()) {
+      assertEquals("https://proxy.example.com/v1/capture", request.uri().toString());
+      assertEquals("Bearer ak_test", authorization(request));
+    }
+    assertFalse(names.contains(BASE_URL));
+  }
+
+  @Test
+  void aBuilderWithKeysInCodeIgnoresTheBaseUrlVariable() throws Exception {
+    List<String> names = new ArrayList<>();
+    Function<String, String> environment =
+        recording(
+            Map.of(ACCESS, "ak_test", SECRET, "sk_test", BASE_URL, "http://localhost:8787"), names);
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .environment(environment)
+            .accessKey("ak_code")
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+
+    client.capture("https://example.com");
+    builder.buildAsync().capture("https://example.com").join();
+
+    assertEquals(2, transport.requests().size());
+    for (HttpRequest request : transport.requests()) {
+      assertEquals("https://api.screenshotscout.com/v1/capture", request.uri().toString());
+    }
+    assertEquals(
+        "https://api.screenshotscout.com/v1/capture?access_key=ak_code&url=https%3A%2F%2Fexample.com",
+        client.buildCaptureUrl("https://example.com"));
+    assertEquals(List.of(), names);
+  }
+
+  @Test
+  void transportFailuresNameTheBaseUrlVariableOnlyWhenTheBaseUrlCameFromIt() {
+    String message =
+        "Screenshot Scout request failed before a complete HTTP response body was received.";
+    Map<String, String> environment = Map.of(ACCESS, "ak_test", BASE_URL, "http://localhost:8787");
+
+    assertTransportFailures(
+        message + " The base URL comes from SCREENSHOTSCOUT_BASE_URL.",
+        ScreenshotScoutClient.builder().environment(environment::get).fromEnv());
+    assertTransportFailures(
+        message,
+        ScreenshotScoutClient.builder()
+            .environment(environment::get)
+            .fromEnv()
+            .baseUrl("http://localhost:8787"));
+    assertTransportFailures(
+        message,
+        ScreenshotScoutClient.builder().environment(environment::get).accessKey("ak_test"));
+    assertTransportFailures(
+        message,
+        ScreenshotScoutClient.builder().environment(Map.of(ACCESS, "ak_test")::get).fromEnv());
+  }
+
+  @Test
+  void aRequestThatCantBeConstructedNamesTheBaseUrlVariableOnlyWhenTheBaseUrlCameFromIt() {
+    String message = "The Screenshot Scout HTTP request could not be constructed.";
+    TestHttpClient transport = new TestHttpClient();
+
+    assertConstructionFailures(
+        message + " The base URL comes from SCREENSHOTSCOUT_BASE_URL.",
+        ScreenshotScoutClient.builder()
+            .environment(Map.of(ACCESS, "ak_test", BASE_URL, "not a url")::get)
+            .fromEnv()
+            .httpClient(transport));
+    assertConstructionFailures(
+        message,
+        ScreenshotScoutClient.builder()
+            .environment(Map.of(ACCESS, "ak_test", BASE_URL, "http://localhost:8787")::get)
+            .fromEnv()
+            .baseUrl("not a url")
+            .httpClient(transport));
+    assertTrue(transport.requests().isEmpty());
+  }
+
+  @Test
+  void cancellationIsUnchangedWhenTheBaseUrlComesFromTheVariable() throws Exception {
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .environment(Map.of(ACCESS, "ak_test", BASE_URL, "http://localhost:8787")::get)
+            .fromEnv();
+
+    TestHttpClient transport = new TestHttpClient();
+    CompletableFuture<HttpResponse<byte[]>> pending = transport.usePendingAsyncResponse();
+    CompletableFuture<CaptureResponse> capture =
+        builder.httpClient(transport).buildAsync().capture("https://example.com");
+    assertTrue(capture.cancel(true));
+    assertTrue(pending.isCancelled());
+    assertThrows(CancellationException.class, capture::join);
+
+    TestHttpClient cancellingTransport = new TestHttpClient();
+    CompletableFuture<HttpResponse<byte[]>> cancelled =
+        cancellingTransport.usePendingAsyncResponse();
+    CompletableFuture<CaptureResponse> cancelledCapture =
+        builder.httpClient(cancellingTransport).buildAsync().capture("https://example.com");
+    assertTrue(cancelled.cancel(false));
+    assertTrue(cancelledCapture.isCancelled());
+    assertThrows(CancellationException.class, cancelledCapture::join);
+
+    TestHttpClient blockingTransport = new TestHttpClient();
+    blockingTransport.usePendingBlockingResponse();
+    ScreenshotScoutClient client = builder.httpClient(blockingTransport).build();
+    CompletableFuture<Throwable> thrown = new CompletableFuture<>();
+    Thread thread =
+        new Thread(
+            () -> {
+              try {
+                client.capture("https://example.com");
+                thrown.complete(null);
+              } catch (Throwable error) {
+                thrown.complete(error);
+              }
+            });
+    thread.start();
+    blockingTransport.pendingBlockingRequest().get(5, TimeUnit.SECONDS);
+    thread.interrupt();
+    assertInstanceOf(InterruptedException.class, thrown.get(5, TimeUnit.SECONDS));
+    thread.join(TimeUnit.SECONDS.toMillis(5));
+  }
+
+  /** Checks the blocking failure and both async failures of clients from the builder. */
+  private static void assertTransportFailures(
+      String message, ScreenshotScoutClientBuilder builder) {
+    IOException ioFailure = new IOException("connection refused");
+    TestHttpClient failingTransport = new TestHttpClient();
+    failingTransport.fail(ioFailure);
+    builder.httpClient(failingTransport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+
+    ScreenshotScoutTransportException blockingError =
+        assertThrows(
+            ScreenshotScoutTransportException.class, () -> client.capture("https://example.com"));
+    assertEquals(message, blockingError.getMessage());
+    assertSame(ioFailure, blockingError.getCause());
+
+    CompletionException completion =
+        assertThrows(
+            CompletionException.class, () -> asyncClient.capture("https://example.com").join());
+    ScreenshotScoutTransportException asyncError =
+        assertInstanceOf(ScreenshotScoutTransportException.class, completion.getCause());
+    assertEquals(message, asyncError.getMessage());
+    assertSame(ioFailure, asyncError.getCause());
+
+    IllegalStateException rejection = new IllegalStateException("rejected");
+    TestHttpClient rejectingTransport = new TestHttpClient();
+    rejectingTransport.throwFromSendAsync(rejection);
+    CompletableFuture<CaptureResponse> rejected =
+        builder.httpClient(rejectingTransport).buildAsync().capture("https://example.com");
+    CompletionException rejectedCompletion =
+        assertThrows(CompletionException.class, rejected::join);
+    ScreenshotScoutTransportException rejectedError =
+        assertInstanceOf(ScreenshotScoutTransportException.class, rejectedCompletion.getCause());
+    assertEquals(message, rejectedError.getMessage());
+    assertSame(rejection, rejectedError.getCause());
+  }
+
+  /** Checks that every capture from clients built by the builder fails before it's sent. */
+  private static void assertConstructionFailures(
+      String message, ScreenshotScoutClientBuilder builder) {
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    List<Executable> captures =
+        List.of(
+            () -> client.capture("https://example.com"),
+            () -> client.capture("https://example.com", null, CaptureHttpMethod.GET),
+            () -> asyncClient.capture("https://example.com"),
+            () -> asyncClient.capture("https://example.com", null, CaptureHttpMethod.GET));
+
+    for (Executable capture : captures) {
+      ScreenshotScoutSerializationException error =
+          assertThrows(ScreenshotScoutSerializationException.class, capture);
+      assertEquals(message, error.getMessage());
+      assertInstanceOf(IllegalArgumentException.class, error.getCause());
+    }
+  }
+
   private static Function<String, String> recording(
       Map<String, String> values, List<String> names) {
     return name -> {
@@ -277,6 +562,11 @@ class FromEnvTest {
 
   private static Map<String, List<String>> query(String url) {
     return TestHttpClient.queryParameters(URI.create(url));
+  }
+
+  /** Returns the part of a capture URL before its query. */
+  private static String endpoint(String url) {
+    return url.substring(0, url.indexOf('?'));
   }
 
   private static String authorization(HttpRequest request) {

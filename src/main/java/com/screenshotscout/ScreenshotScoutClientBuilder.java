@@ -1,5 +1,6 @@
 package com.screenshotscout;
 
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.util.function.Function;
@@ -9,11 +10,16 @@ import java.util.regex.Pattern;
 public final class ScreenshotScoutClientBuilder {
   static final String ACCESS_KEY_VARIABLE = "SCREENSHOTSCOUT_ACCESS_KEY";
   static final String SECRET_KEY_VARIABLE = "SCREENSHOTSCOUT_SECRET_KEY";
+  static final String BASE_URL_VARIABLE = "SCREENSHOTSCOUT_BASE_URL";
 
+  private static final String DEFAULT_BASE_URL = "https://api.screenshotscout.com";
+  private static final String CAPTURE_PATH = "/v1/capture";
+  private static final URI DEFAULT_CAPTURE_ENDPOINT = URI.create(DEFAULT_BASE_URL + CAPTURE_PATH);
   private static final Pattern ACCESS_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9\\-._~+/]+=*$");
 
   private String accessKey;
   private String secretKey;
+  private String baseUrl;
   private boolean fromEnv;
   private Function<String, String> environment = System::getenv;
   private HttpClient httpClient;
@@ -37,10 +43,22 @@ public final class ScreenshotScoutClientBuilder {
   }
 
   /**
+   * Sets the base URL of another server to send requests to, such as your own proxy or a mock
+   * server. Captures go to this URL plus {@code /v1/capture}, and {@code buildCaptureUrl} builds
+   * URLs on it. Defaults to {@code SCREENSHOTSCOUT_BASE_URL} if you use {@link #fromEnv()}, then to
+   * the Screenshot Scout API. A null or empty value means the default.
+   */
+  public ScreenshotScoutClientBuilder baseUrl(String value) {
+    baseUrl = value;
+    return this;
+  }
+
+  /**
    * Reads the keys from environment variables when the client is built: the access key from {@code
    * SCREENSHOTSCOUT_ACCESS_KEY} and, if it's set, the secret key from {@code
-   * SCREENSHOTSCOUT_SECRET_KEY}. Can't be combined with {@link #accessKey(String)} or {@link
-   * #secretKey(String)}.
+   * SCREENSHOTSCOUT_SECRET_KEY}. Also reads the base URL from {@code SCREENSHOTSCOUT_BASE_URL}, if
+   * it's set, unless you pass one to {@link #baseUrl(String)}. Can't be combined with {@link
+   * #accessKey(String)} or {@link #secretKey(String)}.
    */
   public ScreenshotScoutClientBuilder fromEnv() {
     fromEnv = true;
@@ -104,12 +122,22 @@ public final class ScreenshotScoutClientBuilder {
     }
 
     try {
-      HttpRequest.newBuilder(ScreenshotScoutClientSupport.CAPTURE_ENDPOINT)
+      HttpRequest.newBuilder(DEFAULT_CAPTURE_ENDPOINT)
           .header("Authorization", "Bearer " + selectedAccessKey);
     } catch (IllegalArgumentException cause) {
       throw new ScreenshotScoutConfigurationException(
           "The Screenshot Scout access key cannot be used in an Authorization header.", cause);
     }
+
+    // A base URL passed in code wins over the variable, which only fromEnv() reads.
+    String selectedBaseUrl = baseUrl == null || baseUrl.isEmpty() ? null : baseUrl;
+    boolean baseUrlFromEnvironment = false;
+    if (selectedBaseUrl == null && fromEnv) {
+      selectedBaseUrl = readVariable(BASE_URL_VARIABLE);
+      baseUrlFromEnvironment = selectedBaseUrl != null;
+    }
+    String captureEndpoint =
+        appendCapturePath(selectedBaseUrl == null ? DEFAULT_BASE_URL : selectedBaseUrl);
 
     HttpClient selectedClient = httpClient;
     if (selectedClient == null) {
@@ -121,7 +149,24 @@ public final class ScreenshotScoutClientBuilder {
       }
     }
     return new ClientConfiguration(
-        selectedAccessKey, selectedSecretKey, fromEnv && selectedSecretKey != null, selectedClient);
+        selectedAccessKey,
+        selectedSecretKey,
+        fromEnv && selectedSecretKey != null,
+        captureEndpoint,
+        baseUrlFromEnvironment,
+        selectedClient);
+  }
+
+  /**
+   * Removes trailing slashes from the base URL and appends the capture path. The base URL is
+   * otherwise used as given: it's never parsed, so a malformed one fails when a request is made.
+   */
+  private static String appendCapturePath(String baseUrl) {
+    int end = baseUrl.length();
+    while (end > 0 && baseUrl.charAt(end - 1) == '/') {
+      end--;
+    }
+    return baseUrl.substring(0, end) + CAPTURE_PATH;
   }
 
   /** Returns the variable's value, or null when it's unset or empty. */

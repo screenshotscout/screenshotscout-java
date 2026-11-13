@@ -22,12 +22,13 @@ public final class ScreenshotScoutAsyncClient {
   }
 
   /**
-   * Creates a client with the access key from {@code SCREENSHOTSCOUT_ACCESS_KEY} and, if it's set,
-   * the secret key from {@code SCREENSHOTSCOUT_SECRET_KEY}. Same as {@code
-   * builder().fromEnv().buildAsync()}.
+   * Creates a client with the access key from {@code SCREENSHOTSCOUT_ACCESS_KEY} and, if they're
+   * set, the secret key from {@code SCREENSHOTSCOUT_SECRET_KEY} and the base URL from {@code
+   * SCREENSHOTSCOUT_BASE_URL}. Same as {@code builder().fromEnv().buildAsync()}.
    *
    * @throws ScreenshotScoutConfigurationException if {@code SCREENSHOTSCOUT_ACCESS_KEY} isn't set,
-   *     or either variable holds a blank or invalid key
+   *     either variable holds a blank or invalid key, or {@code SCREENSHOTSCOUT_BASE_URL} is set
+   *     but blank
    */
   public static ScreenshotScoutAsyncClient fromEnv() {
     return fromEnv(System::getenv);
@@ -73,10 +74,7 @@ public final class ScreenshotScoutAsyncClient {
               .httpClient()
               .sendAsync(prepared.request(), HttpResponse.BodyHandlers.ofByteArray());
     } catch (RuntimeException cause) {
-      return CompletableFuture.failedFuture(
-          new ScreenshotScoutTransportException(
-              "Screenshot Scout request failed before a complete HTTP response body was received.",
-              cause));
+      return CompletableFuture.failedFuture(support.createTransportException(cause));
     }
 
     CancellableCompletableFuture<CaptureResponse> result =
@@ -91,10 +89,7 @@ public final class ScreenshotScoutAsyncClient {
             if (cause instanceof CancellationException) {
               result.cancel(false);
             } else {
-              result.completeExceptionally(
-                  new ScreenshotScoutTransportException(
-                      "Screenshot Scout request failed before a complete HTTP response body was received.",
-                      cause));
+              result.completeExceptionally(support.createTransportException(cause));
             }
             return;
           }
