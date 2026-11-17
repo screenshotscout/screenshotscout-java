@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ResponseAndFailureTest {
   @Test
@@ -40,6 +42,7 @@ class ResponseAndFailureTest {
     assertEquals("https://cdn.example/screenshot.png", response.screenshotUrl().orElseThrow());
     assertEquals("2026-07-14T00:00:00Z", response.screenshotUrlExpiresAt().orElseThrow());
     assertEquals("HIT", response.cacheStatus().orElseThrow());
+    assertTrue(response.markdown().isEmpty());
     assertEquals(201, response.rawResponse().statusCode());
     assertEquals("image/png", response.rawResponse().contentType().orElseThrow());
     assertEquals(
@@ -50,6 +53,27 @@ class ResponseAndFailureTest {
     byte[] returned = response.bytes();
     returned[0] = 99;
     assertEquals(0, response.bytes()[0]);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"text/markdown; charset=utf-8", "TEXT/MARKDOWN"})
+  void markdownResponseRetainsBytesAndDecodesTheText(String contentType) throws Exception {
+    String markdown = "# Привет\n\nHello, world.\n";
+    byte[] body = markdown.getBytes(StandardCharsets.UTF_8);
+    TestHttpClient transport = new TestHttpClient();
+    transport.respond(200, Map.of("content-type", List.of(contentType)), body);
+
+    BinaryCaptureResponse response =
+        assertInstanceOf(
+            BinaryCaptureResponse.class,
+            client(transport)
+                .capture(
+                    "https://example.com",
+                    CaptureOptions.builder().format(CaptureFormat.MD).build()));
+
+    assertEquals(markdown, response.markdown().orElseThrow());
+    assertArrayEquals(body, response.bytes());
+    assertEquals(contentType, response.rawResponse().contentType().orElseThrow());
   }
 
   @Test

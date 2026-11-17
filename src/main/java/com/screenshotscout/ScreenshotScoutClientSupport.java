@@ -236,7 +236,10 @@ final class ScreenshotScoutClientSupport {
         rawResponse,
         rawResponse.headers().firstValue(SCREENSHOT_URL_HEADER).orElse(null),
         rawResponse.headers().firstValue(SCREENSHOT_URL_EXPIRES_AT_HEADER).orElse(null),
-        rawResponse.headers().firstValue(CACHE_STATUS_HEADER).orElse(null));
+        rawResponse.headers().firstValue(CACHE_STATUS_HEADER).orElse(null),
+        isMarkdownMediaType(rawResponse.contentType().orElse(null))
+            ? new String(rawResponse.bodyUnsafe(), StandardCharsets.UTF_8)
+            : null);
   }
 
   private static JsonCaptureResponse decodeJsonResponse(RawResponse rawResponse) {
@@ -298,6 +301,18 @@ final class ScreenshotScoutClientSupport {
             .trim()
             .toLowerCase(Locale.ROOT);
     return mediaType.equals("application/json") || mediaType.endsWith("+json");
+  }
+
+  private static boolean isMarkdownMediaType(String contentType) {
+    if (contentType == null) {
+      return false;
+    }
+    int separator = contentType.indexOf(';');
+    String mediaType =
+        (separator < 0 ? contentType : contentType.substring(0, separator))
+            .trim()
+            .toLowerCase(Locale.ROOT);
+    return mediaType.equals("text/markdown");
   }
 
   private static ExpectedResponseKind expectedResponseKind(CaptureOptions options) {
