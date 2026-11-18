@@ -1,8 +1,9 @@
 package com.screenshotscout;
 
-/** An open string-backed screenshot, PDF, or Markdown output format. */
+/** An open string-backed screenshot, PDF, Markdown, or HTML output format. */
 public final class CaptureFormat extends CaptureStringValue {
   public static final CaptureFormat GIF = new CaptureFormat("gif");
+  public static final CaptureFormat HTML = new CaptureFormat("html");
   public static final CaptureFormat JPEG = new CaptureFormat("jpeg");
   public static final CaptureFormat JPG = new CaptureFormat("jpg");
   public static final CaptureFormat MD = new CaptureFormat("md");

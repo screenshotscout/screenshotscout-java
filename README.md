@@ -17,7 +17,7 @@ Add the SDK to your project:
 <dependency>
   <groupId>com.screenshotscout</groupId>
   <artifactId>screenshotscout</artifactId>
-  <version>0.7.0</version>
+  <version>0.8.0</version>
 </dependency>
 ```
 
@@ -56,29 +56,7 @@ if (response instanceof BinaryCaptureResponse binary) {
 
 POST is the default, or GET when the client has a secret key. Without `responseType`, `capture`
 returns a `BinaryCaptureResponse`.
-
-## Get a page as Markdown
-
-Set `format` to `CaptureFormat.MD` to get the page as Markdown:
-
-```java
-import com.screenshotscout.BinaryCaptureResponse;
-import com.screenshotscout.CaptureFormat;
-import com.screenshotscout.CaptureOptions;
-import com.screenshotscout.CaptureResponse;
-
-CaptureResponse response =
-    client.capture(
-        "https://example.com",
-        CaptureOptions.builder().format(CaptureFormat.MD).build());
-
-if (response instanceof BinaryCaptureResponse binary) {
-  binary.markdown().ifPresent(System.out::println);
-}
-```
-
-`BinaryCaptureResponse.markdown()` returns the Markdown text, or an empty `Optional` for other
-formats.
+With `CaptureFormat.MD` or `CaptureFormat.HTML`, the text is also in `markdown()` or `html()`.
 
 ## Request a JSON result
 

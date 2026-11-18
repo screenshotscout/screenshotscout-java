@@ -73,6 +73,7 @@ class ClientBehaviorTest {
   void openServiceValuesRemainRawAndMethodSelectorIsClosed() {
     assertEquals("webp", CaptureFormat.WEBP.value());
     assertEquals("md", CaptureFormat.MD.value());
+    assertEquals("html", CaptureFormat.HTML.value());
     assertEquals("future-format", CaptureFormat.fromString("future-format").value());
     assertEquals(
         CaptureFormat.fromString("future-format"), CaptureFormat.fromString("future-format"));

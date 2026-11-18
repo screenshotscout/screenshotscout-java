@@ -43,6 +43,7 @@ class ResponseAndFailureTest {
     assertEquals("2026-07-14T00:00:00Z", response.screenshotUrlExpiresAt().orElseThrow());
     assertEquals("HIT", response.cacheStatus().orElseThrow());
     assertTrue(response.markdown().isEmpty());
+    assertTrue(response.html().isEmpty());
     assertEquals(201, response.rawResponse().statusCode());
     assertEquals("image/png", response.rawResponse().contentType().orElseThrow());
     assertEquals(
@@ -72,6 +73,29 @@ class ResponseAndFailureTest {
                     CaptureOptions.builder().format(CaptureFormat.MD).build()));
 
     assertEquals(markdown, response.markdown().orElseThrow());
+    assertTrue(response.html().isEmpty());
+    assertArrayEquals(body, response.bytes());
+    assertEquals(contentType, response.rawResponse().contentType().orElseThrow());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"text/html; charset=utf-8", "TEXT/HTML; charset=UTF-8"})
+  void htmlResponseRetainsBytesAndDecodesTheText(String contentType) throws Exception {
+    String html = "<!DOCTYPE html><html><body><h1>Привет</h1><p>Hello, world.</p></body></html>";
+    byte[] body = html.getBytes(StandardCharsets.UTF_8);
+    TestHttpClient transport = new TestHttpClient();
+    transport.respond(200, Map.of("content-type", List.of(contentType)), body);
+
+    BinaryCaptureResponse response =
+        assertInstanceOf(
+            BinaryCaptureResponse.class,
+            client(transport)
+                .capture(
+                    "https://example.com",
+                    CaptureOptions.builder().format(CaptureFormat.HTML).build()));
+
+    assertEquals(html, response.html().orElseThrow());
+    assertTrue(response.markdown().isEmpty());
     assertArrayEquals(body, response.bytes());
     assertEquals(contentType, response.rawResponse().contentType().orElseThrow());
   }

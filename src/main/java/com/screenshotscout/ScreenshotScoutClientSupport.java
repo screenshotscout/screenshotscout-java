@@ -239,6 +239,9 @@ final class ScreenshotScoutClientSupport {
         rawResponse.headers().firstValue(CACHE_STATUS_HEADER).orElse(null),
         isMarkdownMediaType(rawResponse.contentType().orElse(null))
             ? new String(rawResponse.bodyUnsafe(), StandardCharsets.UTF_8)
+            : null,
+        isHtmlMediaType(rawResponse.contentType().orElse(null))
+            ? new String(rawResponse.bodyUnsafe(), StandardCharsets.UTF_8)
             : null);
   }
 
@@ -313,6 +316,18 @@ final class ScreenshotScoutClientSupport {
             .trim()
             .toLowerCase(Locale.ROOT);
     return mediaType.equals("text/markdown");
+  }
+
+  private static boolean isHtmlMediaType(String contentType) {
+    if (contentType == null) {
+      return false;
+    }
+    int separator = contentType.indexOf(';');
+    String mediaType =
+        (separator < 0 ? contentType : contentType.substring(0, separator))
+            .trim()
+            .toLowerCase(Locale.ROOT);
+    return mediaType.equals("text/html");
   }
 
   private static ExpectedResponseKind expectedResponseKind(CaptureOptions options) {

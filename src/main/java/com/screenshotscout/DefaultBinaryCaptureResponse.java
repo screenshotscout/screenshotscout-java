@@ -8,6 +8,7 @@ final class DefaultBinaryCaptureResponse implements BinaryCaptureResponse {
   private final String screenshotUrlExpiresAt;
   private final String cacheStatus;
   private final String markdown;
+  private final String html;
   private final RawResponse rawResponse;
 
   DefaultBinaryCaptureResponse(
@@ -15,13 +16,15 @@ final class DefaultBinaryCaptureResponse implements BinaryCaptureResponse {
       String screenshotUrl,
       String screenshotUrlExpiresAt,
       String cacheStatus,
-      String markdown) {
+      String markdown,
+      String html) {
     this.rawResponse = rawResponse;
     this.bytes = rawResponse.bodyUnsafe();
     this.screenshotUrl = screenshotUrl;
     this.screenshotUrlExpiresAt = screenshotUrlExpiresAt;
     this.cacheStatus = cacheStatus;
     this.markdown = markdown;
+    this.html = html;
   }
 
   @Override
@@ -47,6 +50,11 @@ final class DefaultBinaryCaptureResponse implements BinaryCaptureResponse {
   @Override
   public Optional<String> markdown() {
     return Optional.ofNullable(markdown);
+  }
+
+  @Override
+  public Optional<String> html() {
+    return Optional.ofNullable(html);
   }
 
   @Override
