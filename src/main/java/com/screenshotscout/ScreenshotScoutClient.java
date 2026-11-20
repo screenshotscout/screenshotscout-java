@@ -69,6 +69,33 @@ public final class ScreenshotScoutClient {
     return send(support.prepare(url, options, method));
   }
 
+  /**
+   * Sends an HTML document instead of a URL, such as an invoice or a report you generated, in one
+   * POST request and waits for the final inline capture response. The HTML is sent exactly as
+   * given. A client with a secret key refuses it, because POST requests can't be signed.
+   *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key
+   * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
+   *     preserved
+   */
+  public CaptureResponse captureFromHtml(String html) throws InterruptedException {
+    return captureFromHtml(html, null);
+  }
+
+  /**
+   * Sends an HTML document instead of a URL, such as an invoice or a report you generated, in one
+   * POST request and waits for the final inline capture response. The HTML is sent exactly as
+   * given. A client with a secret key refuses it, because POST requests can't be signed.
+   *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key
+   * @throws InterruptedException if the waiting thread is interrupted; its interrupted status is
+   *     preserved
+   */
+  public CaptureResponse captureFromHtml(String html, CaptureOptions options)
+      throws InterruptedException {
+    return send(support.prepareHtml(html, options));
+  }
+
   private CaptureResponse send(PreparedCapture prepared) throws InterruptedException {
     if (Thread.currentThread().isInterrupted()) {
       throw new InterruptedException("The Screenshot Scout capture call was interrupted.");

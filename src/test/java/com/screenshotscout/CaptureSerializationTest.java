@@ -4,18 +4,24 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -26,6 +32,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class CaptureSerializationTest {
+  private static final String INVOICE_HTML =
+      "<!doctype html>\n<html><head><title>Invoice #1042</title></head>"
+          + "<body><h1>Invoice #1042 for Zoë & \"Café\" \ud83d\ude00</h1></body></html>\n";
+
   @Test
   void postIsDefaultAndSerializesTheCompleteTypedOptionSurface() throws Exception {
     TestHttpClient transport = new TestHttpClient();
@@ -638,6 +648,151 @@ class CaptureSerializationTest {
         CaptureFormat.fromString("future").value().getBytes(StandardCharsets.UTF_8));
   }
 
+  @Test
+  void captureFromHtmlSendsTheHtmlFirstInAPostBodyExactlyAsGiven() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder().accessKey("ak_test").httpClient(transport);
+    String html = "  " + INVOICE_HTML + "  ";
+    CaptureOptions options =
+        CaptureOptions.builder()
+            .format(CaptureFormat.PDF)
+            .pdfPrintBackground(true)
+            .cookies(List.of("session=abc; Domain=example.com"))
+            .build();
+
+    assertInstanceOf(BinaryCaptureResponse.class, builder.build().captureFromHtml(html, options));
+    assertInstanceOf(
+        BinaryCaptureResponse.class, builder.buildAsync().captureFromHtml(html, options).join());
+
+    assertEquals(2, transport.requests().size());
+    for (HttpRequest request : transport.requests()) {
+      assertEquals("POST", request.method());
+      assertEquals("https://api.screenshotscout.com/v1/capture", request.uri().toString());
+      assertNull(request.uri().getRawQuery());
+      assertEquals("Bearer ak_test", request.headers().firstValue("authorization").orElseThrow());
+      assertEquals("application/json", request.headers().firstValue("content-type").orElseThrow());
+
+      byte[] encoded = TestHttpClient.requestBody(request);
+      @SuppressWarnings("unchecked")
+      Map<String, Object> body = (Map<String, Object>) JsonCodec.parse(encoded);
+      assertEquals(
+          List.of("html", "format", "cookies", "pdf_print_background"), List.copyOf(body.keySet()));
+      assertEquals(html, body.get("html"));
+      assertEquals("pdf", body.get("format"));
+      assertEquals(List.of("session=abc; Domain=example.com"), body.get("cookies"));
+      assertEquals(true, body.get("pdf_print_background"));
+      // HTML characters and letters such as "ë" are written as they are, without escapes.
+      String text = new String(encoded, StandardCharsets.UTF_8);
+      assertTrue(
+          text.startsWith(
+              "{\"html\":\"  <!doctype html>\\n<html><head><title>Invoice #1042</title>"),
+          text);
+      assertTrue(text.contains("<h1>Invoice #1042 for Zoë & \\\"Café\\\" "), text);
+    }
+  }
+
+  @Test
+  void captureFromHtmlLeavesEmptyAndBlankHtmlToTheApi() throws Exception {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder().accessKey("key").httpClient(transport);
+
+    builder.build().captureFromHtml("");
+    builder.buildAsync().captureFromHtml(" \n").join();
+
+    assertEquals(
+        "{\"html\":\"\"}",
+        new String(
+            TestHttpClient.requestBody(transport.requests().get(0)), StandardCharsets.UTF_8));
+    assertEquals(
+        "{\"html\":\" \\n\"}",
+        new String(
+            TestHttpClient.requestBody(transport.requests().get(1)), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void clientsWithASecretKeyRefuseCaptureFromHtmlWithoutCallingTheTransport() {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder()
+            .accessKey("ak_test")
+            .secretKey("sk_test")
+            .httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    CaptureOptions options = CaptureOptions.builder().format(CaptureFormat.PDF).build();
+    List<Executable> htmlCaptures =
+        List.of(
+            () -> client.captureFromHtml(INVOICE_HTML),
+            () -> client.captureFromHtml(INVOICE_HTML, options),
+            () -> asyncClient.captureFromHtml(INVOICE_HTML),
+            () -> asyncClient.captureFromHtml(INVOICE_HTML, options));
+
+    for (Executable htmlCapture : htmlCaptures) {
+      ScreenshotScoutConfigurationException error =
+          assertThrows(ScreenshotScoutConfigurationException.class, htmlCapture);
+      assertEquals(
+          "captureFromHtml() sends the HTML in a POST body, which can't be signed. This client has"
+              + " a secret key: use a client without a secret key and an API key that doesn't"
+              + " require signed requests.",
+          error.getMessage());
+    }
+    assertTrue(transport.requests().isEmpty());
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("invalidHtml")
+  void captureFromHtmlRefusesNullAndInvalidText(String name, String html, String message) {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder().accessKey("key").httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    CaptureOptions options = CaptureOptions.builder().build();
+    List<Executable> htmlCaptures =
+        List.of(
+            () -> client.captureFromHtml(html),
+            () -> client.captureFromHtml(html, options),
+            () -> asyncClient.captureFromHtml(html),
+            () -> asyncClient.captureFromHtml(html, options));
+
+    for (Executable htmlCapture : htmlCaptures) {
+      ScreenshotScoutSerializationException error =
+          assertThrows(ScreenshotScoutSerializationException.class, htmlCapture);
+      assertEquals(message, error.getMessage());
+      assertEquals("html", error.option().orElseThrow());
+    }
+    assertTrue(transport.requests().isEmpty());
+  }
+
+  @Test
+  void neitherTargetIsAnOptionAndCaptureFromHtmlHasNoMethodToChoose() {
+    // Capture options are a fixed set of typed values, with no way to add url, html or any other.
+    for (Class<?> type : List.of(CaptureOptions.class, CaptureOptions.Builder.class)) {
+      for (Method method : type.getDeclaredMethods()) {
+        if (Modifier.isPublic(method.getModifiers())) {
+          assertFalse(Set.of("url", "html").contains(method.getName()), method::toString);
+          assertTrue(method.getParameterCount() <= 1, method::toString);
+          assertFalse(
+              Arrays.stream(method.getParameterTypes()).anyMatch(Map.class::isAssignableFrom),
+              method::toString);
+        }
+      }
+    }
+
+    // HTML is always sent in a POST request, so captureFromHtml takes no CaptureHttpMethod.
+    for (Class<?> client : List.of(ScreenshotScoutClient.class, ScreenshotScoutAsyncClient.class)) {
+      Set<List<Class<?>>> overloads =
+          Arrays.stream(client.getMethods())
+              .filter(method -> method.getName().equals("captureFromHtml"))
+              .map(method -> Arrays.<Class<?>>asList(method.getParameterTypes()))
+              .collect(Collectors.toSet());
+      assertEquals(
+          Set.of(List.of(String.class), List.of(String.class, CaptureOptions.class)), overloads);
+    }
+  }
+
   private static Stream<Arguments> ecmaScriptNumberCases() {
     return Stream.of(
         Arguments.of(0.0, "0"),
@@ -664,6 +819,15 @@ class CaptureSerializationTest {
             "https://proxy.example.com/screenshotscout/v1/capture"),
         Arguments.of(
             "https://proxy.example.com/a%20b", "https://proxy.example.com/a%20b/v1/capture"));
+  }
+
+  private static Stream<Arguments> invalidHtml() {
+    String invalidText = "The HTML to capture must contain valid Unicode text.";
+    return Stream.of(
+        Arguments.of("null", null, "The HTML to capture must be a string."),
+        Arguments.of("lone high surrogate", "<p>\ud83d</p>", invalidText),
+        Arguments.of("lone low surrogate", "<p>\ude00</p>", invalidText),
+        Arguments.of("reversed surrogate pair", "<p>\ude00\ud83d</p>", invalidText));
   }
 
   // The gateway and every SDK test the same signing-vectors.json, copied unchanged.

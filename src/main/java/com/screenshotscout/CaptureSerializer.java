@@ -15,16 +15,25 @@ final class CaptureSerializer {
   private CaptureSerializer() {}
 
   static SerializedCaptureOptions serialize(String targetUrl, CaptureOptions options) {
-    if (targetUrl == null) {
+    return serialize(Target.URL, targetUrl, options);
+  }
+
+  static SerializedCaptureOptions serializeHtml(String html, CaptureOptions options) {
+    return serialize(Target.HTML, html, options);
+  }
+
+  private static SerializedCaptureOptions serialize(
+      Target target, String value, CaptureOptions options) {
+    if (value == null) {
       throw new ScreenshotScoutSerializationException(
-          "The capture target URL must be a string.", "url");
+          target.description + " must be a string.", target.wireName);
     }
-    if (!isWellFormed(targetUrl)) {
+    if (!isWellFormed(value)) {
       throw new ScreenshotScoutSerializationException(
-          "The capture target URL must contain valid Unicode text.", "url");
+          target.description + " must contain valid Unicode text.", target.wireName);
     }
 
-    SerializationBuilder serialized = new SerializationBuilder(targetUrl);
+    SerializationBuilder serialized = new SerializationBuilder(target.wireName, value);
     if (options == null) {
       return serialized.build();
     }
@@ -155,13 +164,27 @@ final class CaptureSerializer {
     }
   }
 
+  /** What to capture: a page's URL, or an HTML document. It's written first, before the options. */
+  private enum Target {
+    URL("url", "The capture target URL"),
+    HTML("html", "The HTML to capture");
+
+    private final String wireName;
+    private final String description;
+
+    Target(String wireName, String description) {
+      this.wireName = wireName;
+      this.description = description;
+    }
+  }
+
   private static final class SerializationBuilder {
     private final List<WirePair> pairs = new ArrayList<>();
     private final LinkedHashMap<String, Object> body = new LinkedHashMap<>();
 
-    private SerializationBuilder(String targetUrl) {
-      pairs.add(new WirePair("url", targetUrl));
-      body.put("url", targetUrl);
+    private SerializationBuilder(String targetName, String targetValue) {
+      pairs.add(new WirePair(targetName, targetValue));
+      body.put(targetName, targetValue);
     }
 
     private void add(String wireName, Object value) {

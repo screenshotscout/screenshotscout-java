@@ -10,11 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class ResponseAndFailureTest {
+  private static final String HTML = "<!doctype html><title>Invoice #1042</title>";
+
   @Test
   void binaryResponseRetainsBytesMetadataAndRawResponse() throws Exception {
     byte[] body = new byte[] {0, 1, 2, (byte) 255};
@@ -256,7 +259,88 @@ class ResponseAndFailureTest {
     assertEquals(1, transport.blockingCalls());
   }
 
+  @Test
+  void htmlCapturesDecodeResponsesTheSameWayAsUrlCaptures() throws Exception {
+    byte[] pdf = "%PDF-1.7".getBytes(StandardCharsets.US_ASCII);
+    TestHttpClient binaryTransport = new TestHttpClient();
+    binaryTransport.respond(
+        200,
+        Map.of(
+            "content-type",
+            List.of("application/pdf"),
+            "screenshot-scout-screenshot-url",
+            List.of("https://cdn.example/invoice.pdf")),
+        pdf);
+    CaptureOptions pdfOptions = CaptureOptions.builder().format(CaptureFormat.PDF).build();
+
+    for (CaptureResponse response :
+        List.of(
+            client(binaryTransport).captureFromHtml(HTML, pdfOptions),
+            asyncClient(binaryTransport).captureFromHtml(HTML, pdfOptions).join())) {
+      BinaryCaptureResponse binary = assertInstanceOf(BinaryCaptureResponse.class, response);
+      assertArrayEquals(pdf, binary.bytes());
+      assertEquals("https://cdn.example/invoice.pdf", binary.screenshotUrl().orElseThrow());
+      assertEquals("application/pdf", binary.rawResponse().contentType().orElseThrow());
+    }
+
+    TestHttpClient jsonTransport = new TestHttpClient();
+    jsonTransport.respond(
+        200,
+        Map.of("content-type", List.of("application/json")),
+        "{\"screenshot_url\":\"https://cdn.example/invoice.pdf\"}"
+            .getBytes(StandardCharsets.UTF_8));
+    CaptureOptions jsonOptions =
+        CaptureOptions.builder()
+            .format(CaptureFormat.PDF)
+            .responseType(CaptureResponseType.JSON)
+            .build();
+
+    for (CaptureResponse response :
+        List.of(
+            client(jsonTransport).captureFromHtml(HTML, jsonOptions),
+            asyncClient(jsonTransport).captureFromHtml(HTML, jsonOptions).join())) {
+      JsonCaptureResponse json = assertInstanceOf(JsonCaptureResponse.class, response);
+      assertEquals("https://cdn.example/invoice.pdf", json.result().screenshotUrl().orElseThrow());
+    }
+  }
+
+  @Test
+  void aBodyOverTheSizeLimitArrivesAsAnApiException() {
+    String encoded =
+        "{\"error_code\":\"request_too_large\","
+            + "\"error_message\":\"The request body must be at most 5 MB.\"}";
+    TestHttpClient transport = new TestHttpClient();
+    transport.respond(
+        413,
+        Map.of("content-type", List.of("application/json")),
+        encoded.getBytes(StandardCharsets.UTF_8));
+
+    ScreenshotScoutApiException blockingError =
+        assertThrows(
+            ScreenshotScoutApiException.class, () -> client(transport).captureFromHtml(HTML));
+    CompletionException completion =
+        assertThrows(
+            CompletionException.class, () -> asyncClient(transport).captureFromHtml(HTML).join());
+    ScreenshotScoutApiException asyncError =
+        assertInstanceOf(ScreenshotScoutApiException.class, completion.getCause());
+
+    for (ScreenshotScoutApiException error : List.of(blockingError, asyncError)) {
+      assertEquals(413, error.statusCode());
+      assertEquals("request_too_large", error.errorCode().orElseThrow());
+      assertEquals("The request body must be at most 5 MB.", error.errorMessage().orElseThrow());
+      assertEquals("The request body must be at most 5 MB.", error.getMessage());
+      assertTrue(error.hasResponseBody());
+      assertArrayEquals(encoded.getBytes(StandardCharsets.UTF_8), error.rawResponse().body());
+    }
+    assertEquals(1, transport.blockingCalls());
+    assertEquals(1, transport.asyncCalls());
+  }
+
   private static ScreenshotScoutClient client(TestHttpClient transport) {
     return ScreenshotScoutClient.builder().accessKey("key").httpClient(transport).build();
+  }
+
+  private static ScreenshotScoutAsyncClient asyncClient(TestHttpClient transport) {
+    return ScreenshotScoutAsyncClient.builder().accessKey("key").httpClient(transport).buildAsync();
   }
 }

@@ -65,18 +65,33 @@ final class ScreenshotScoutClientSupport {
     SerializedCaptureOptions serialized = CaptureSerializer.serialize(targetUrl, options);
     ExpectedResponseKind expectedKind = expectedResponseKind(options);
     if (secretKey != null && method == CaptureHttpMethod.POST) {
-      String source =
-          secretKeyFromEnvironment
-              ? " from " + ScreenshotScoutClientBuilder.SECRET_KEY_VARIABLE
-              : "";
       throw new ScreenshotScoutConfigurationException(
           "POST requests can't be signed. This client has a secret key"
-              + source
+              + secretKeySource()
               + ": send this capture with method GET, or use a client without a secret key and an"
               + " API key that doesn't require signed requests.");
     }
     String signature = createSignature(serialized.pairs());
     HttpRequest request = createRequest(serialized, method, signature);
+    return new PreparedCapture(request, expectedKind);
+  }
+
+  /**
+   * Prepares an HTML capture, which is always a POST request. A client with a secret key refuses
+   * it, because POST requests can't be signed.
+   */
+  PreparedCapture prepareHtml(String html, CaptureOptions options) {
+    SerializedCaptureOptions serialized = CaptureSerializer.serializeHtml(html, options);
+    ExpectedResponseKind expectedKind = expectedResponseKind(options);
+    if (secretKey != null) {
+      throw new ScreenshotScoutConfigurationException(
+          "captureFromHtml() sends the HTML in a POST body, which can't be signed. This client has"
+              + " a secret key"
+              + secretKeySource()
+              + ": use a client without a secret key and an API key that doesn't require signed"
+              + " requests.");
+    }
+    HttpRequest request = createRequest(serialized, CaptureHttpMethod.POST, null);
     return new PreparedCapture(request, expectedKind);
   }
 
@@ -133,6 +148,13 @@ final class ScreenshotScoutClientSupport {
           null,
           cause);
     }
+  }
+
+  /** Names the variable the secret key came from, as a phrase to append to "a secret key". */
+  private String secretKeySource() {
+    return secretKeyFromEnvironment
+        ? " from " + ScreenshotScoutClientBuilder.SECRET_KEY_VARIABLE
+        : "";
   }
 
   /** Names the variable the base URL came from, as a sentence to append to a failure message. */

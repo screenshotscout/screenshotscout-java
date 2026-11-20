@@ -21,6 +21,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class ClientBehaviorTest {
+  private static final String HTML = "<!doctype html><title>Invoice #1042</title>";
+
   @Test
   void builderValidatesCredentialsAndCreatesBothClientModels() {
     assertThrows(
@@ -160,6 +162,36 @@ class ClientBehaviorTest {
     assertTrue(capture.isCancelled());
     assertTrue(pending.isCancelled());
     assertThrows(CancellationException.class, capture::join);
+  }
+
+  @Test
+  void cancellingAnAsyncHtmlCaptureCancelsTheTransportFuture() {
+    TestHttpClient transport = new TestHttpClient();
+    CompletableFuture<HttpResponse<byte[]>> pending = transport.usePendingAsyncResponse();
+    ScreenshotScoutAsyncClient client = asyncClient(transport);
+
+    CompletableFuture<CaptureResponse> capture = client.captureFromHtml(HTML);
+
+    assertFalse(capture.isDone());
+    assertEquals(1, transport.asyncCalls());
+    assertTrue(capture.cancel(true));
+    assertTrue(capture.isCancelled());
+    assertTrue(pending.isCancelled());
+    assertThrows(CancellationException.class, capture::join);
+  }
+
+  @Test
+  void blockingHtmlCaptureInterruptionIsPreservedAndDoesNotCallTransport() {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClient client = client(transport);
+    Thread.currentThread().interrupt();
+    try {
+      assertThrows(InterruptedException.class, () -> client.captureFromHtml(HTML));
+      assertTrue(Thread.currentThread().isInterrupted());
+      assertEquals(0, transport.blockingCalls());
+    } finally {
+      Thread.interrupted();
+    }
   }
 
   @Test

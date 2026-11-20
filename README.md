@@ -79,11 +79,59 @@ response.result().screenshotUrl().ifPresent(System.out::println);
 Set `responseType` to `CaptureResponseType.JSON` to receive screenshot metadata instead of binary
 file data. Unrecognized result fields are available through `CaptureResult.additionalFields()`.
 
+## Capture from HTML
+
+To render HTML you generated, such as an invoice or a report, call `captureFromHtml` with the
+document instead of a URL. It takes the same options as `capture`:
+
+```java
+import com.screenshotscout.BinaryCaptureResponse;
+import com.screenshotscout.CaptureFormat;
+import com.screenshotscout.CaptureOptions;
+import com.screenshotscout.ScreenshotScoutClient;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+// Reads SCREENSHOTSCOUT_ACCESS_KEY
+ScreenshotScoutClient client = ScreenshotScoutClient.fromEnv();
+
+String html =
+    """
+    <!doctype html>
+    <html>
+      <head>
+        <title>Invoice #1042</title>
+      </head>
+      <body>
+        <h1>Invoice #1042</h1>
+        <p>Total due: $480.00</p>
+      </body>
+    </html>
+    """;
+
+CaptureOptions options =
+    CaptureOptions.builder()
+        .format(CaptureFormat.PDF)
+        .build();
+
+BinaryCaptureResponse response =
+    (BinaryCaptureResponse) client.captureFromHtml(html, options);
+
+Files.write(Path.of("invoice.pdf"), response.bytes());
+```
+
+Send a complete document that starts with `<!doctype html>`. A PDF takes its title from `<title>`.
+The page has no URL, so use absolute URLs for images, stylesheets and fonts, or add a `<base href>`.
+See [How to Render HTML](https://screenshotscout.com/docs/guides/render-html) for more.
+
+The HTML is sent in a POST request, which can't be signed. So `captureFromHtml` needs a client
+without a secret key, and an API key that doesn't require signed requests.
+
 ## Non-blocking client
 
-Use `ScreenshotScoutAsyncClient` when your application needs non-blocking I/O. Its `capture`
-methods return a `CompletableFuture` that completes with the final capture response. This does not
-create a queued capture job or use webhooks.
+Use `ScreenshotScoutAsyncClient` when your application needs non-blocking I/O. Its `capture` and
+`captureFromHtml` methods return a `CompletableFuture` that completes with the final capture
+response. This does not create a queued capture job or use webhooks.
 
 ```java
 import com.screenshotscout.BinaryCaptureResponse;

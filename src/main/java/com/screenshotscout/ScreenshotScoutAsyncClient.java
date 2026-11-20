@@ -66,6 +66,30 @@ public final class ScreenshotScoutAsyncClient {
     return send(support.prepare(url, options, method));
   }
 
+  /**
+   * Starts one POST call that sends an HTML document instead of a URL, such as an invoice or a
+   * report you generated. Its future completes with the final inline capture response. The HTML is
+   * sent exactly as given. A client with a secret key refuses it, because POST requests can't be
+   * signed.
+   *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key
+   */
+  public CompletableFuture<CaptureResponse> captureFromHtml(String html) {
+    return captureFromHtml(html, null);
+  }
+
+  /**
+   * Starts one POST call that sends an HTML document instead of a URL, such as an invoice or a
+   * report you generated. Its future completes with the final inline capture response. The HTML is
+   * sent exactly as given. A client with a secret key refuses it, because POST requests can't be
+   * signed.
+   *
+   * @throws ScreenshotScoutConfigurationException if this client has a secret key
+   */
+  public CompletableFuture<CaptureResponse> captureFromHtml(String html, CaptureOptions options) {
+    return send(support.prepareHtml(html, options));
+  }
+
   private CompletableFuture<CaptureResponse> send(PreparedCapture prepared) {
     CompletableFuture<HttpResponse<byte[]>> transportFuture;
     try {

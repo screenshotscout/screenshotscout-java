@@ -239,6 +239,26 @@ class FromEnvTest {
   }
 
   @Test
+  void captureFromHtmlNamesTheVariableTheSecretKeyCameFrom() {
+    TestHttpClient transport = new TestHttpClient();
+    ScreenshotScoutClientBuilder builder =
+        ScreenshotScoutClient.builder().environment(BOTH_KEYS::get).fromEnv().httpClient(transport);
+    ScreenshotScoutClient client = builder.build();
+    ScreenshotScoutAsyncClient asyncClient = builder.buildAsync();
+    String html = "<!doctype html><title>Invoice #1042</title>";
+    String message =
+        "captureFromHtml() sends the HTML in a POST body, which can't be signed. This client has a"
+            + " secret key from SCREENSHOTSCOUT_SECRET_KEY: use a client without a secret key and"
+            + " an API key that doesn't require signed requests.";
+
+    assertConfigurationError(message, () -> client.captureFromHtml(html));
+    assertConfigurationError(message, () -> client.captureFromHtml(html, OPTIONS));
+    assertConfigurationError(message, () -> asyncClient.captureFromHtml(html));
+    assertConfigurationError(message, () -> asyncClient.captureFromHtml(html, OPTIONS));
+    assertTrue(transport.requests().isEmpty());
+  }
+
+  @Test
   void fromEnvCantBeCombinedWithAccessKeyOrSecretKey() {
     List<String> names = new ArrayList<>();
     Function<String, String> environment = recording(BOTH_KEYS, names);
